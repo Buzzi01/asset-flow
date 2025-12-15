@@ -4,50 +4,29 @@
     "qtd": 60,
     "pm": 14.69,
     "meta": 10,
-    "tipo": "Ação"
+    "tipo": "Ação",
+    "lpa_manual": 2.01,
+    "vpa_manual": 16.58,
+    "dy_medio_5a": 0.90
   },
   {
     "ticker": "ITUB3",
     "qtd": 38,
     "pm": 23.35,
     "meta": 10,
-    "tipo": "Ação"
-  },
-  {
-    "ticker": "TAEE11",
-    "qtd": 100,
-    "pm": 35.00,
-    "meta": 15,
-    "tipo": "Ação"
+    "tipo": "Ação",
+    "lpa_manual": 4.06,
+    "vpa_manual": 19.93,
+    "dy_medio_5a": 1.50
   },
   {
     "ticker": "MXRF11",
     "qtd": 181,
     "pm": 10.04,
     "meta": 15,
-    "tipo": "FII"
-  },
-  {
-    "ticker": "HGLG11",
-    "qtd": 10,
-    "pm": 161.74,
-    "meta": 15,
-    "tipo": "FII"
-  },
-  {
-    "ticker": "VT",
-    "qtd": 5,
-    "pm": 98.50,
-    "meta": 25,
-    "tipo": "Internacional",
-    "moeda": "USD"
-  },
-  {
-    "ticker": "Tesouro IPCA+",
-    "qtd": 1,
-    "pm": 1000,
-    "meta": 10,
-    "tipo": "Renda Fixa",
-    "valor_fixo": 1280.00
+    "tipo": "FII",
+    "lpa_manual": 0,
+    "vpa_manual": 0,
+    "dy_medio_5a": 1.10
   }
 ]
