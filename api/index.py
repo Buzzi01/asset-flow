@@ -2,6 +2,7 @@ from http.server import BaseHTTPRequestHandler
 import json
 import yfinance as yf
 import math
+import os
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -9,95 +10,127 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.end_headers()
 
-        # --- SEUS DADOS (Baseado na sua planilha) ---
-        # Adicionei LPA e VPA manualmente para permitir o cálculo de Graham
-        carteira = [
-            # AÇÕES (Graham funciona bem aqui)
-            {"ticker": "BBDC4", "qtd": 60, "pm": 14.69, "tipo": "Ação", "lpa": 2.01, "vpa": 16.58},
-            {"ticker": "ITUB3", "qtd": 38, "pm": 23.35, "tipo": "Ação", "lpa": 4.06, "vpa": 19.93},
-            {"ticker": "AURE3", "qtd": 90, "pm": 12.00, "tipo": "Ação", "lpa": 0.67, "vpa": 12.08},
-            {"ticker": "CPLE5", "qtd": 60, "pm": 7.66, "tipo": "Ação", "lpa": 1.02, "vpa": 8.58},
-            
-            # FIIs (Focamos em P/VP e Dividendos)
-            {"ticker": "MXRF11", "qtd": 181, "pm": 10.04, "tipo": "FII", "dy": 12.15, "pvp": 1.01},
-            {"ticker": "HGLG11", "qtd": 10, "pm": 161.74, "tipo": "FII", "dy": 8.27, "pvp": 0.96},
-            
-            # INTERNACIONAL
-            {"ticker": "VT", "qtd": 3.73, "pm": 96.88, "tipo": "Internacional", "moeda": "USD"},
-            
-            # RENDA FIXA (Simulada, pois não tem ticker no Yahoo)
-            {"ticker": "Tesouro IPCA+", "qtd": 1, "pm": 1000, "tipo": "Renda Fixa", "valor_fixo": 1250.00}
-        ]
-
         try:
-            # Filtra o que precisa de cotação online
+            # 1. LER O ARQUIVO JSON (Sua Carteira)
+            with open('carteira.json', 'r', encoding='utf-8') as f:
+                carteira = json.load(f)
+
+            # 2. PREPARAR TICKERS
             tickers_yahoo = []
             for item in carteira:
                 if item["tipo"] != "Renda Fixa":
                     sufixo = ".SA" if item["tipo"] in ["Ação", "FII"] else ""
                     tickers_yahoo.append(item["ticker"] + sufixo)
 
-            # Baixa cotações
+            # 3. BAIXAR PREÇOS E INFO
+            # period='1d' é rápido para preços
             dados_yahoo = yf.download(tickers_yahoo, period="1d", progress=False)['Close']
             cotacoes = dados_yahoo.iloc[-1]
 
-            carteira_processada = []
             resumo = {"Total": 0, "Ação": 0, "FII": 0, "Internacional": 0, "Renda Fixa": 0}
-            dolar = 5.82 # Pode ser automatizado depois
+            ativos_processados = []
+            dolar = 5.82 
 
+            # --- PROCESSAMENTO DOS ATIVOS ---
             for item in carteira:
-                # 1. Definir Preço Atual
+                # Definição de Ticker e Preço
                 if item["tipo"] == "Renda Fixa":
-                    preco_atual = item["valor_fixo"]
+                    preco_atual = item.get("valor_fixo", item["pm"])
                     ticker_busca = item["ticker"]
                 else:
                     sufixo = ".SA" if item["tipo"] in ["Ação", "FII"] else ""
                     ticker_busca = item["ticker"] + sufixo
                     preco_atual = float(cotacoes[ticker_busca])
 
-                # 2. Conversão de Moeda
+                # Conversão Moeda
                 fator_moeda = dolar if item.get("moeda") == "USD" else 1
                 preco_atual_brl = preco_atual * fator_moeda
-                
-                # 3. Cálculos Básicos
-                total_investido = item["qtd"] * (item["pm"] * fator_moeda)
+                pm_brl = item["pm"] * fator_moeda
+
+                # Valores Totais
                 total_atual = item["qtd"] * preco_atual_brl
-                lucro = total_atual - total_investido
-                lucro_perc = ((total_atual / total_investido) - 1) * 100
+                total_investido = item["qtd"] * pm_brl
+                lucro_reais = total_atual - total_investido
+                lucro_perc = ((total_atual / total_investido) - 1) * 100 if total_investido > 0 else 0
 
-                # 4. CÁLCULO DE GRAHAM (Preço Justo) = Raiz(22.5 * LPA * VPA)
-                preco_justo = 0
-                margem_seguranca = 0
-                
-                if item["tipo"] == "Ação" and item.get("lpa") and item.get("vpa"):
-                    try:
-                        # Graham Number
-                        projecao = 22.5 * item["lpa"] * item["vpa"]
-                        if projecao > 0:
-                            preco_justo = math.sqrt(projecao)
-                            margem_seguranca = ((preco_justo - preco_atual) / preco_atual) * 100
-                    except:
-                        preco_justo = 0
-
-                # Adiciona aos totais
+                # Somar ao Patrimônio
                 resumo["Total"] += total_atual
                 if item["tipo"] in resumo:
                     resumo[item["tipo"]] += total_atual
 
-                carteira_processada.append({
+                # --- BUSCA AUTOMÁTICA DE INDICADORES (LPA/VPA/DY) ---
+                lpa = 0
+                vpa = 0
+                dy = 0
+                pvp = 0
+                
+                # Só busca indicadores para Ações e FIIs
+                if item["tipo"] in ["Ação", "FII"]:
+                    try:
+                        # Tenta pegar infos do Ticker
+                        stock = yf.Ticker(ticker_busca)
+                        info = stock.info
+                        
+                        # Ações
+                        lpa = info.get('trailingEps', 0)
+                        vpa = info.get('bookValue', 0)
+                        
+                        # FIIs (Estimativa)
+                        if item["tipo"] == "FII" and vpa > 0:
+                            pvp = preco_atual / vpa
+                    except:
+                        pass # Se falhar, segue zerado
+
+                # --- CÁLCULO DE GRAHAM (Ações) ---
+                preco_justo = 0
+                margem_seguranca = 0
+                if item["tipo"] == "Ação" and lpa > 0 and vpa > 0:
+                    try:
+                        projecao = 22.5 * lpa * vpa
+                        if projecao > 0:
+                            preco_justo = math.sqrt(projecao)
+                            margem_seguranca = ((preco_justo - preco_atual) / preco_atual) * 100
+                    except:
+                        pass
+
+                ativos_processados.append({
                     **item,
                     "preco_atual": preco_atual,
                     "total_atual": total_atual,
-                    "lucro_reais": lucro,
+                    "lucro_reais": lucro_reais,
                     "lucro_perc": lucro_perc,
-                    "preco_justo_graham": preco_justo,
-                    "margem_seguranca": margem_seguranca
+                    "preco_justo": preco_justo,
+                    "margem_seguranca": margem_seguranca,
+                    "pvp": pvp,
+                    "lpa": lpa,
+                    "vpa": vpa
                 })
+
+            # --- ESTRATÉGIA DE BALANCEAMENTO ---
+            # Calcula quanto falta comprar para atingir a meta
+            estrategia = []
+            for ativo in ativos_processados:
+                meta_financeira = resumo["Total"] * (ativo["meta"] / 100)
+                diferenca = meta_financeira - ativo["total_atual"]
+                
+                status = "Aguardar"
+                if diferenca > 0:
+                    status = "Comprar"
+                elif diferenca < -100: # Tolerância
+                    status = "Vender/Segurar"
+
+                ativo["status_balanceamento"] = status
+                ativo["falta_comprar"] = diferenca
+                ativo["porcentagem_atual"] = (ativo["total_atual"] / resumo["Total"]) * 100
+                estrategia.append(ativo)
+
+            # Ordena: Primeiro os que precisa comprar mais (maior diferença positiva)
+            estrategia.sort(key=lambda x: x["falta_comprar"], reverse=True)
 
             response = {
                 "status": "Sucesso",
                 "resumo": resumo,
-                "ativos": carteira_processada
+                "ativos": estrategia
             }
 
         except Exception as e:
