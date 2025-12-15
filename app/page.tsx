@@ -11,40 +11,112 @@ export default function Home() {
       .then((data) => {
         setData(data);
         setLoading(false);
-      })
-      .catch((error) => {
-        console.error('Erro ao buscar dados:', error);
-        setLoading(false);
       });
   }, []);
 
+  // Formatação de Dinheiro (R$)
+  const formatMoney = (value: number) => {
+    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  };
+
+  // Formatação de Porcentagem (%)
+  const formatPercent = (value: number) => {
+    return value.toFixed(2) + '%';
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-slate-950 text-white">
-      <h1 className="text-6xl font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
-        AssetFlow
-      </h1>
-      
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex bg-slate-900 p-10 rounded-xl border border-slate-800 shadow-2xl">
-        {loading ? (
-           <p className="animate-pulse text-yellow-500 flex items-center gap-2">
-             <span>⏳</span> Conectando ao cérebro Python...
-           </p>
-        ) : data ? (
-          <div className="w-full">
-            <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-4">
-              <div className="h-3 w-3 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]"></div>
-              <p className="text-xl text-gray-400">Status do Sistema: <span className="text-green-400 font-bold">ONLINE</span></p>
+    <main className="min-h-screen bg-slate-950 text-white p-4 md:p-8">
+      <div className="max-w-6xl mx-auto">
+        
+        {/* CABEÇALHO */}
+        <header className="mb-8 flex flex-col md:flex-row justify-between items-center border-b border-slate-800 pb-6">
+          <div>
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
+              AssetFlow
+            </h1>
+            <p className="text-slate-400 mt-1">Gestão Inteligente de Patrimônio</p>
+          </div>
+          
+          {/* Card de Patrimônio Total */}
+          {!loading && data && (
+            <div className="mt-4 md:mt-0 bg-slate-900 p-4 rounded-xl border border-slate-700 text-center min-w-[200px]">
+              <p className="text-xs text-slate-400 uppercase tracking-wider">Patrimônio Total</p>
+              <p className="text-3xl font-bold text-white mt-1">{formatMoney(data.total_patrimonio)}</p>
             </div>
-            
-            <ul className="space-y-4">
-              <li className="text-2xl">App: <span className="font-bold text-white">{data.app_name}</span></li>
-              <li className="bg-slate-800 p-3 rounded border border-slate-700">Mensagem: {data.mensagem}</li>
-              <li className="text-xs text-gray-500 text-right mt-4">Server Time: {data.time}</li>
-            </ul>
+          )}
+        </header>
+
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
           </div>
         ) : (
-          <p className="text-red-500">Erro ao conectar com a API. Verifique o console.</p>
+          <div className="overflow-x-auto rounded-xl border border-slate-800 shadow-2xl">
+            <table className="w-full text-left bg-slate-900 border-collapse">
+              <thead>
+                <tr className="text-slate-400 text-xs uppercase bg-slate-950/50">
+                  <th className="p-4 font-semibold">Ativo</th>
+                  <th className="p-4 font-semibold text-right">Qtd</th>
+                  <th className="p-4 font-semibold text-right">Preço Médio</th>
+                  <th className="p-4 font-semibold text-right">Preço Atual</th>
+                  <th className="p-4 font-semibold text-right">Total Atual</th>
+                  <th className="p-4 font-semibold text-right">Variação (%)</th>
+                  <th className="p-4 font-semibold text-right">% Cart.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 text-sm">
+                {data?.ativos?.map((ativo: any) => (
+                  <tr key={ativo.ticker} className="hover:bg-slate-800/50 transition-colors">
+                    
+                    {/* Ticker + Tipo */}
+                    <td className="p-4">
+                      <div className="font-bold text-white text-base">{ativo.ticker}</div>
+                      <div className="text-xs text-slate-500">{ativo.tipo}</div>
+                    </td>
+
+                    <td className="p-4 text-right text-slate-300">{ativo.qtd}</td>
+                    
+                    <td className="p-4 text-right text-slate-400">
+                      R$ {ativo.pm.toFixed(2)}
+                    </td>
+
+                    <td className="p-4 text-right font-mono text-slate-200">
+                       R$ {ativo.preco_atual.toFixed(2)}
+                    </td>
+
+                    <td className="p-4 text-right font-bold text-white">
+                      {formatMoney(ativo.total_atual)}
+                    </td>
+
+                    {/* Variação Colorida (Verde/Vermelho) */}
+                    <td className={`p-4 text-right font-bold ${ativo.lucro_reais >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      <div>{formatMoney(ativo.lucro_reais)}</div>
+                      <div className="text-xs opacity-80">
+                        {ativo.lucro_reais > 0 ? '+' : ''}{formatPercent(ativo.lucro_perc)}
+                      </div>
+                    </td>
+
+                    {/* Barra de Progresso do Balanceamento */}
+                    <td className="p-4 text-right w-32">
+                      <div className="text-xs text-slate-300 mb-1">{ativo.percentual_carteira.toFixed(1)}%</div>
+                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-blue-500 h-full" 
+                          style={{ width: `${ativo.percentual_carteira}%` }}
+                        ></div>
+                      </div>
+                    </td>
+
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
+        
+        <div className="mt-4 text-center text-xs text-slate-600">
+          Dados atualizados via API Python Serverless
+        </div>
       </div>
     </main>
   );
