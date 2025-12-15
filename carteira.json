@@ -1,32 +1,11 @@
 [
-  {
-    "ticker": "BBDC4",
-    "qtd": 60,
-    "pm": 14.69,
-    "meta": 10,
-    "tipo": "Ação",
-    "lpa_manual": 2.01,
-    "vpa_manual": 16.58,
-    "dy_medio_5a": 0.90
-  },
-  {
-    "ticker": "ITUB3",
-    "qtd": 38,
-    "pm": 23.35,
-    "meta": 10,
-    "tipo": "Ação",
-    "lpa_manual": 4.06,
-    "vpa_manual": 19.93,
-    "dy_medio_5a": 1.50
-  },
-  {
-    "ticker": "MXRF11",
-    "qtd": 181,
-    "pm": 10.04,
-    "meta": 15,
-    "tipo": "FII",
-    "lpa_manual": 0,
-    "vpa_manual": 0,
-    "dy_medio_5a": 1.10
-  }
+  { "ticker": "BBDC4", "qtd": 60, "pm": 14.69, "meta": 10, "tipo": "Ação", "lpa_manual": 2.01, "vpa_manual": 16.58, "dy_proj_12m": 1.15 },
+  { "ticker": "ITUB3", "qtd": 38, "pm": 23.35, "meta": 10, "tipo": "Ação", "lpa_manual": 4.06, "vpa_manual": 19.93, "dy_proj_12m": 2.50 },
+  { "ticker": "AURE3", "qtd": 90, "pm": 12.00, "meta": 5, "tipo": "Ação", "lpa_manual": 0.67, "vpa_manual": 12.08, "dy_proj_12m": 1.20 },
+  { "ticker": "MXRF11", "qtd": 181, "pm": 10.04, "meta": 15, "tipo": "FII", "vpa_manual": 9.90, "dy_proj_12m": 1.32 },
+  { "ticker": "HGLG11", "qtd": 10, "pm": 161.74, "meta": 15, "tipo": "FII", "vpa_manual": 155.00, "dy_proj_12m": 13.20 },
+  { "ticker": "VT", "qtd": 5, "pm": 98.50, "meta": 20, "tipo": "Internacional", "moeda": "USD" },
+  { "ticker": "Tesouro IPCA+", "qtd": 1, "pm": 1000, "meta": 10, "tipo": "Renda Fixa", "valor_fixo": 1350.00 },
+  { "ticker": "BTC-USD", "qtd": 0.005, "pm": 60000, "meta": 5, "tipo": "Cripto", "moeda": "USD" },
+  { "ticker": "Nubank Caixinha", "qtd": 1, "pm": 5000, "meta": 10, "tipo": "Reserva", "valor_fixo": 5100.00 }
 ]

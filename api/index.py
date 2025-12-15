@@ -6,155 +6,187 @@ import os
 
 class handler(BaseHTTPRequestHandler):
     
-    # --- LEITURA DE DADOS (GET) ---
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
 
         try:
-            # Tenta ler o arquivo local
-            caminho_arquivo = 'carteira.json'
-            if not os.path.exists(caminho_arquivo):
-                # Cria arquivo vazio se não existir
-                with open(caminho_arquivo, 'w') as f: json.dump([], f)
-            
-            with open(caminho_arquivo, 'r', encoding='utf-8') as f:
+            # 1. Carregar/Criar Dados
+            arquivo = 'carteira.json'
+            if not os.path.exists(arquivo):
+                with open(arquivo, 'w') as f: json.dump([], f)
+            with open(arquivo, 'r', encoding='utf-8') as f:
                 carteira = json.load(f)
 
-            # Prepara tickers para Yahoo
-            tickers_yahoo = []
-            for item in carteira:
-                if item["tipo"] != "Renda Fixa":
-                    sufixo = ".SA" if item["tipo"] in ["Ação", "FII"] else ""
-                    tickers_yahoo.append(item["ticker"] + sufixo)
+            # 2. Cotações Online
+            tickers_yahoo = [
+                (i["ticker"] + ".SA") if i["tipo"] in ["Ação", "FII"] else i["ticker"]
+                for i in carteira if i["tipo"] not in ["Renda Fixa", "Reserva"]
+            ]
+            
+            cotacoes = {}
+            if tickers_yahoo:
+                try:
+                    dados = yf.download(tickers_yahoo, period="1d", progress=False)['Close']
+                    cotacoes = dados.iloc[-1]
+                except: pass
 
-            # Baixa cotações
-            try:
-                dados_yahoo = yf.download(tickers_yahoo, period="1d", progress=False)['Close']
-                cotacoes = dados_yahoo.iloc[-1]
-            except:
-                cotacoes = {}
-
-            resumo = {"Total": 0, "Ação": 0, "FII": 0, "Internacional": 0, "Renda Fixa": 0}
-            ativos_processados = []
+            resumo = {"Total": 0}
+            ativos_proc = []
             dolar = 5.82 
 
+            # 3. Processamento Inicial (Totais)
             for item in carteira:
-                # -- 1. PREÇOS --
-                if item["tipo"] == "Renda Fixa":
-                    preco_atual = item.get("valor_fixo", item["pm"])
-                    ticker_busca = item["ticker"]
-                else:
-                    sufixo = ".SA" if item["tipo"] in ["Ação", "FII"] else ""
-                    ticker_busca = item["ticker"] + sufixo
-                    try:
-                        preco_atual = float(cotacoes[ticker_busca])
-                    except:
-                        preco_atual = item["pm"] # Fallback
-
-                fator_moeda = dolar if item.get("moeda") == "USD" else 1
-                preco_atual_brl = preco_atual * fator_moeda
-                pm_brl = item["pm"] * fator_moeda
+                tipo = item["tipo"]
+                ticker = item["ticker"]
                 
-                total_atual = item["qtd"] * preco_atual_brl
+                # Definir Preço Atual
+                if tipo in ["Renda Fixa", "Reserva"]:
+                    preco = item.get("valor_fixo", item["pm"])
+                else:
+                    busca = ticker + ".SA" if tipo in ["Ação", "FII"] else ticker
+                    try: preco = float(cotacoes[busca])
+                    except: preco = item["pm"] # Fallback
+
+                # Moeda
+                fator = dolar if item.get("moeda") == "USD" else 1
+                preco_brl = preco * fator
+                
+                # Totais
+                total_atual = item["qtd"] * preco_brl
                 resumo["Total"] += total_atual
-                if item["tipo"] in resumo: resumo[item["tipo"]] += total_atual
+                resumo[tipo] = resumo.get(tipo, 0) + total_atual
 
-                lucro_reais = total_atual - (item["qtd"] * pm_brl)
-                lucro_perc = ((total_atual / (item["qtd"] * pm_brl)) - 1) * 100 if pm_brl > 0 else 0
+                item["preco_atual"] = preco
+                item["total_atual_brl"] = total_atual
+                ativos_proc.append(item)
 
-                # -- 2. INDICADORES (Prioridade: Manual > Yahoo) --
+            # 4. Análise Fundamentalista e Decisão
+            estrategia = []
+            for item in ativos_proc:
+                # Dados
+                preco = item["preco_atual"]
                 lpa = item.get("lpa_manual", 0)
                 vpa = item.get("vpa_manual", 0)
-                dy_proj = item.get("dy_medio_5a", 0) # Valor em Reais médio de dividendos
-                
-                # Se não tiver manual, tenta Yahoo (para ações)
-                if lpa == 0 and item["tipo"] == "Ação":
-                     # Aqui você poderia adicionar scraping avançado no futuro
-                     pass 
+                dy_proj = item.get("dy_proj_12m", 0) # Dividendo anual projetado em R$
 
-                # -- 3. CÁLCULOS AVANÇADOS --
-                
-                # Graham: Raiz(22.5 * LPA * VPA)
-                preco_graham = 0
-                margem_graham = 0
-                if lpa > 0 and vpa > 0:
-                    val = 22.5 * lpa * vpa
-                    if val > 0:
-                        preco_graham = math.sqrt(val)
-                        margem_graham = ((preco_graham - preco_atual) / preco_atual) * 100
+                # --- CÁLCULOS DE VALUATION ---
+                # Graham (Raiz de 22.5 * LPA * VPA)
+                vi_graham = 0
+                mg_graham = 0
+                if item["tipo"] == "Ação" and lpa > 0 and vpa > 0:
+                    try: 
+                        vi_graham = math.sqrt(22.5 * lpa * vpa)
+                        mg_graham = ((vi_graham - preco) / preco) * 100
+                    except: pass
 
-                # Preço Teto (Bazin Adaptado 7%)
-                # Formula: Dividendos Médios / 0.07
-                preco_teto_7 = 0
-                margem_teto = 0
+                # Bazin (Preço Teto = Div / 0.06) - Ou 7% se preferir
+                teto_bazin = 0
+                mg_bazin = 0
                 if dy_proj > 0:
-                    preco_teto_7 = dy_proj / 0.07
-                    margem_teto = ((preco_teto_7 - preco_atual) / preco_atual) * 100
+                    teto_bazin = dy_proj / 0.06 # Usando 6% como padrão de mercado
+                    mg_bazin = ((teto_bazin - preco) / preco) * 100
 
-                # P/L e ROE (Estimados se tiver LPA/VPA)
-                p_l = preco_atual / lpa if lpa > 0 else 0
-                roe = (lpa / vpa) * 100 if vpa > 0 else 0
+                # P/VP para FIIs
+                pvp = 0
+                if item["tipo"] == "FII" and vpa > 0:
+                    pvp = preco / vpa
 
-                ativos_processados.append({
+                # --- LÓGICA DE BALANCEAMENTO ---
+                meta_valor = resumo["Total"] * (item.get("meta", 0) / 100)
+                falta_comprar = meta_valor - item["total_atual_brl"]
+                pct_atual = (item["total_atual_brl"] / resumo["Total"]) * 100 if resumo["Total"] > 0 else 0
+
+                # --- DECISÃO FINAL (O GRANDE JUIZ) ---
+                recomendacao = "Neutro"
+                cor_rec = "gray"
+
+                if item["tipo"] == "Ação":
+                    # Regra: Precisa na carteira E (Está barato em Graham OU Bazin)
+                    if falta_comprar > 0:
+                        if mg_graham > 20 or mg_bazin > 10:
+                            recomendacao = "COMPRA FORTE"
+                            cor_rec = "green"
+                        elif mg_graham > 0 or mg_bazin > 0:
+                            recomendacao = "COMPRAR"
+                            cor_rec = "blue"
+                        else:
+                            recomendacao = "AGUARDAR PREÇO" # Precisa balancear, mas tá caro
+                            cor_rec = "yellow"
+                    else:
+                        recomendacao = "MANTER/VENDER"
+                        cor_rec = "red"
+                
+                elif item["tipo"] == "FII":
+                    # Regra: P/VP abaixo de 1.05 e precisa na carteira
+                    if falta_comprar > 0:
+                        if pvp > 0 and pvp < 1.00:
+                            recomendacao = "COMPRA OPORTUNIDADE"
+                            cor_rec = "green"
+                        elif pvp < 1.05:
+                            recomendacao = "COMPRAR"
+                            cor_rec = "blue"
+                        else:
+                            recomendacao = "CARO (AGUARDAR)"
+                            cor_rec = "yellow"
+                    else:
+                        recomendacao = "MANTER"
+                        cor_rec = "gray"
+                
+                else:
+                    # Outros ativos (apenas balanceamento)
+                    if falta_comprar > 0:
+                        recomendacao = "APORTAR (META)"
+                        cor_rec = "blue"
+                    else:
+                        recomendacao = "OK"
+
+                estrategia.append({
                     **item,
-                    "preco_atual": preco_atual,
-                    "total_atual": total_atual,
-                    "lucro_reais": lucro_reais,
-                    "lucro_perc": lucro_perc,
-                    "lpa": lpa,
-                    "vpa": vpa,
-                    "dy_medio": dy_proj,
-                    "preco_graham": preco_graham,
-                    "margem_graham": margem_graham,
-                    "preco_teto_7": preco_teto_7,
-                    "margem_teto": margem_teto,
-                    "p_l": p_l,
-                    "roe": roe
+                    "pct_atual": pct_atual,
+                    "falta_comprar": falta_comprar,
+                    "vi_graham": vi_graham,
+                    "mg_graham": mg_graham,
+                    "teto_bazin": teto_bazin,
+                    "mg_bazin": mg_bazin,
+                    "pvp": pvp,
+                    "recomendacao": recomendacao,
+                    "cor_rec": cor_rec
                 })
 
-            # -- ESTRATÉGIA --
-            estrategia = []
-            for ativo in ativos_processados:
-                meta_fin = resumo["Total"] * (ativo.get("meta", 0) / 100)
-                falta = meta_fin - ativo["total_atual"]
-                ativo["falta_comprar"] = falta
-                ativo["pct_atual"] = (ativo["total_atual"] / resumo["Total"]) * 100 if resumo["Total"] > 0 else 0
-                estrategia.append(ativo)
-
+            # Ordenar: Prioridade para o que precisa comprar mais
             estrategia.sort(key=lambda x: x["falta_comprar"], reverse=True)
 
             self.wfile.write(json.dumps({"status": "Sucesso", "resumo": resumo, "ativos": estrategia}).encode('utf-8'))
-            return
 
         except Exception as e:
             self.wfile.write(json.dumps({"status": "Erro", "detalhe": str(e)}).encode('utf-8'))
 
-
-    # --- SALVAR DADOS (POST) ---
+    # Salvar Edições
     def do_POST(self):
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
-
-        content_len = int(self.headers.get('Content-Length', 0))
-        post_body = self.rfile.read(content_len)
-        dados_novos = json.loads(post_body) # Recebe apenas o ativo editado
-
-        # Lê o atual
-        with open('carteira.json', 'r', encoding='utf-8') as f:
-            carteira = json.load(f)
-
-        # Atualiza o ativo específico
-        for item in carteira:
-            if item["ticker"] == dados_novos["ticker"]:
-                item["lpa_manual"] = float(dados_novos["lpa"])
-                item["vpa_manual"] = float(dados_novos["vpa"])
-                item["dy_medio_5a"] = float(dados_novos["dy_medio"])
         
-        # Salva no disco
-        with open('carteira.json', 'w', encoding='utf-8') as f:
-            json.dump(carteira, f, indent=2)
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            body = json.loads(self.rfile.read(length))
+            
+            with open('carteira.json', 'r') as f: data = json.load(f)
+            
+            for item in data:
+                if item["ticker"] == body["ticker"]:
+                    # Atualiza campos manuais
+                    if "lpa" in body: item["lpa_manual"] = float(body["lpa"])
+                    if "vpa" in body: item["vpa_manual"] = float(body["vpa"])
+                    if "dy" in body: item["dy_proj_12m"] = float(body["dy"])
+                    if "meta" in body: item["meta"] = float(body["meta"])
+                    if "qtd" in body: item["qtd"] = float(body["qtd"])
+                    if "pm" in body: item["pm"] = float(body["pm"])
+                    if "valor_fixo" in body: item["valor_fixo"] = float(body["valor_fixo"])
 
-        self.wfile.write(json.dumps({"status": "Salvo"}).encode('utf-8'))
+            with open('carteira.json', 'w') as f: json.dump(data, f, indent=2)
+            self.wfile.write(json.dumps({"status": "Salvo"}).encode('utf-8'))
+        except Exception as e:
+            self.wfile.write(json.dumps({"erro": str(e)}).encode('utf-8'))
