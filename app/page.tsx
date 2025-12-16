@@ -1,13 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Edit2, Save, X, TrendingUp, PieChart, Wallet, DollarSign, Activity, Info, AlertTriangle, Target } from 'lucide-react';
+import { TrendingUp, PieChart, Wallet, DollarSign, Activity, Target, Info, AlertTriangle } from 'lucide-react';
 
 export default function Home() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('Resumo');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
 
   const fetchData = () => {
     fetch('/api/index').then(res => res.json()).then(d => { setData(d); setLoading(false); });
@@ -17,16 +15,9 @@ export default function Home() {
 
   const formatMoney = (v: number) => v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
 
-  const saveEdit = async () => {
-    await fetch('/api/index', { method: 'POST', body: JSON.stringify(editingItem) });
-    setIsModalOpen(false);
-    setLoading(true);
-    fetchData();
-  };
-
   const categories = [
     { id: 'Resumo', icon: <PieChart size={18} /> },
-    { id: 'Radar', icon: <Target size={18} />, label: "Radar" }, // Nova Aba
+    { id: 'Radar', icon: <Target size={18} />, label: "Radar" },
     { id: 'Ação', icon: <TrendingUp size={18} /> },
     { id: 'FII', icon: <Activity size={18} /> },
     { id: 'Internacional', icon: <DollarSign size={18} /> },
@@ -125,7 +116,7 @@ export default function Home() {
             {/* VIEW RADAR */}
             {tab === 'Radar' && <RadarView />}
 
-            {/* TABELA PADRÃO (Esconde se estiver no Radar, ou mostra abaixo) */}
+            {/* TABELA PADRÃO */}
             {tab !== 'Radar' && (
             <div className="bg-[#1e293b] rounded-xl border border-slate-700 overflow-hidden shadow-2xl overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -134,14 +125,20 @@ export default function Home() {
                     <th className="p-4">Ativo</th>
                     <th className="p-4 text-center">Score / Decisão</th>
                     <th className="p-4 text-right">Preço</th>
-                    <th className="p-4 text-right">Meta vs Atual</th>
+                    <th className="p-4 text-right min-w-[140px]">Progresso da Meta</th>
                     <th className="p-4 text-right">Falta Comprar</th>
                     {(tab === 'Ação' || tab === 'Resumo') && <th className="p-4 text-right text-yellow-500">Graham</th>}
-                    <th className="p-4 text-center">Ed</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
-                  {filteredAssets.map((ativo: any) => (
+                  {filteredAssets.map((ativo: any) => {
+                    // Lógica Visual da Barra: Quanto % da meta eu já atingi?
+                    // Se tenho 5% e meta é 10%, barra = 50% cheia.
+                    const percentualDaMeta = ativo.meta > 0 ? (ativo.pct_atual / ativo.meta) * 100 : 0;
+                    const barraWidth = Math.min(percentualDaMeta, 100);
+                    const isOverweight = ativo.pct_atual > ativo.meta;
+
+                    return (
                     <tr key={ativo.ticker} className="hover:bg-slate-800/50 transition-colors group">
                       
                       <td className="p-4">
@@ -151,7 +148,7 @@ export default function Home() {
 
                       {/* Decisão com Tooltip */}
                       <td className="p-4 text-center group/tooltip relative">
-                        <div className="flex flex-col items-center">
+                        <div className="flex flex-col items-center cursor-help">
                           <span className={`px-2 py-1 rounded text-[10px] font-bold border uppercase mb-1 ${
                             ativo.cor_rec === 'green' ? 'bg-green-900/30 text-green-400 border-green-700' :
                             ativo.cor_rec === 'blue' ? 'bg-blue-900/30 text-blue-400 border-blue-700' :
@@ -163,7 +160,6 @@ export default function Home() {
                           </div>
                         </div>
                         
-                        {/* O Tooltip flutuante */}
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/tooltip:block w-48 bg-black text-xs text-slate-200 p-2 rounded border border-slate-600 z-50 shadow-xl">
                           <p className="font-bold text-white mb-1 border-b border-slate-700 pb-1">Motivos:</p>
                           {ativo.motivo || "Sem dados suficientes"}
@@ -175,10 +171,21 @@ export default function Home() {
                         <div className="text-xs text-slate-500">Min 6m: {formatMoney(ativo.min_6m)}</div>
                       </td>
 
+                      {/* Meta vs Atual (NOVA BARRA MELHORADA) */}
                       <td className="p-4 text-right">
-                        <div className="text-xs text-slate-400 mb-1">{ativo.pct_atual.toFixed(1)}% / {ativo.meta}%</div>
-                        <div className="w-24 h-1.5 bg-slate-700 rounded-full ml-auto overflow-hidden">
-                          <div className={`h-full ${ativo.pct_atual > ativo.meta ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(ativo.pct_atual, 100)}%` }}></div>
+                        <div className="flex justify-between text-xs mb-1">
+                           <span className={isOverweight ? 'text-red-400 font-bold' : 'text-blue-300'}>
+                             {ativo.pct_atual.toFixed(1)}%
+                           </span>
+                           <span className="text-slate-500">Meta: {ativo.meta}%</span>
+                        </div>
+                        <div className="w-32 h-2 bg-slate-700 rounded-full ml-auto overflow-hidden relative" title={`Atingiu ${percentualDaMeta.toFixed(0)}% da meta`}>
+                          {/* Barra de Progresso */}
+                          <div 
+                             className={`h-full transition-all duration-500 ${isOverweight ? 'bg-red-500' : 'bg-blue-500'}`} 
+                             style={{ width: `${barraWidth}%` }}
+                          ></div>
+                          {/* Marcador de 100% da meta (caso estoure, a barra fica vermelha e cheia) */}
                         </div>
                       </td>
 
@@ -196,12 +203,8 @@ export default function Home() {
                         </td>
                       )}
 
-                      <td className="p-4 text-center">
-                        <button onClick={() => { setEditingItem({...ativo}); setIsModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400"><Edit2 size={16} /></button>
-                      </td>
-
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
@@ -209,42 +212,6 @@ export default function Home() {
           </>
         )}
       </div>
-
-      {/* Modal de Edição (Mantive o mesmo que você já aprovou) */}
-      {isModalOpen && editingItem && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-          <div className="bg-[#1e293b] p-6 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2"><Edit2 size={20} className="text-blue-500"/> {editingItem.ticker}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white"><X /></button>
-            </div>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs text-slate-400 block mb-1">Qtd</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-2 text-white" value={editingItem.qtd} onChange={e => setEditingItem({...editingItem, qtd: parseFloat(e.target.value)})} /></div>
-                <div><label className="text-xs text-slate-400 block mb-1">PM</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-2 text-white" value={editingItem.pm} onChange={e => setEditingItem({...editingItem, pm: parseFloat(e.target.value)})} /></div>
-              </div>
-              <div><label className="text-xs text-slate-400 block mb-1">Meta (%)</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-2 text-white" value={editingItem.meta} onChange={e => setEditingItem({...editingItem, meta: parseFloat(e.target.value)})} /></div>
-              {(editingItem.tipo === 'Ação' || editingItem.tipo === 'FII') && (
-                <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                  <p className="text-xs font-bold text-blue-400 mb-3 uppercase">Indicadores</p>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div><label className="text-[10px] text-slate-400 block">VPA</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-1 text-sm text-white" value={editingItem.vpa_manual || ''} onChange={e => setEditingItem({...editingItem, vpa: parseFloat(e.target.value), vpa_manual: parseFloat(e.target.value)})} /></div>
-                    <div><label className="text-[10px] text-slate-400 block">Div. Proj 12m (R$)</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-1 text-sm text-white" value={editingItem.dy_proj_12m || ''} onChange={e => setEditingItem({...editingItem, dy: parseFloat(e.target.value), dy_proj_12m: parseFloat(e.target.value)})} /></div>
-                  </div>
-                  {editingItem.tipo === 'Ação' && (<div><label className="text-[10px] text-slate-400 block">LPA</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-1 text-sm text-white" value={editingItem.lpa_manual || ''} onChange={e => setEditingItem({...editingItem, lpa: parseFloat(e.target.value), lpa_manual: parseFloat(e.target.value)})} /></div>)}
-                </div>
-              )}
-               {(editingItem.tipo === 'Renda Fixa' || editingItem.tipo === 'Reserva') && (
-                 <div><label className="text-xs text-slate-400 mb-1 block">Saldo (R$)</label><input type="number" className="w-full bg-[#0f172a] border border-slate-600 rounded p-2 text-white" value={editingItem.valor_fixo} onChange={e => setEditingItem({...editingItem, valor_fixo: parseFloat(e.target.value)})} /></div>
-              )}
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-3 rounded-lg text-slate-400 hover:bg-slate-800">Cancelar</button>
-              <button onClick={saveEdit} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2"><Save size={18} /> Salvar</button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
