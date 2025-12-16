@@ -25,8 +25,10 @@ class handler(BaseHTTPRequestHandler):
         if not os.path.exists(arquivo):
             with open(arquivo, 'w') as f: json.dump([], f)
         
-        with open(arquivo, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except: return []
 
     def _save_database(self, data):
         """Salva os dados no JSON."""
@@ -34,7 +36,7 @@ class handler(BaseHTTPRequestHandler):
             json.dump(data, f, indent=2)
 
     def _fetch_market_data(self, tickers):
-        """Gerencia cache e busca dados no Yahoo Finance."""
+        """Gerencia cache com estratégia de Fallback (Plano A -> Plano B)."""
         if (time.time() - CACHE["timestamp"]) < CACHE["timeout"] and CACHE["cotacoes"]:
             return CACHE["cotacoes"], CACHE["dolar"]
 
@@ -43,30 +45,56 @@ class handler(BaseHTTPRequestHandler):
         dolar_novo = CACHE["dolar"]
 
         try:
-            # Dólar
-            hist_dolar = yf.Ticker("BRL=X").history(period="1d")
-            if not hist_dolar.empty:
-                dolar_novo = float(hist_dolar['Close'].iloc[-1])
-            
-            # Ativos (Histórico 1 ano)
+            # 1. Dólar
+            try:
+                hist_dolar = yf.Ticker("BRL=X").history(period="1d")
+                if not hist_dolar.empty: dolar_novo = float(hist_dolar['Close'].iloc[-1])
+            except: pass
+
+            # 2. Ativos - Plano A: Tentar baixar histórico de 1 ano (para pegar mínimas)
+            sucesso_download = False
             if tickers:
-                dados = yf.download(tickers, period="1y", group_by='ticker', progress=False)
-                for t in tickers:
+                try:
+                    # Timeout implícito do Vercel é curto. Tentamos baixar tudo de uma vez.
+                    dados = yf.download(tickers, period="1y", group_by='ticker', progress=False, threads=True)
+                    
+                    for t in tickers:
+                        try:
+                            serie = dados[t]['Close'] if len(tickers) > 1 else dados['Close']
+                            if not serie.empty:
+                                cotacoes_novas[t] = {
+                                    "atual": float(serie.iloc[-1]),
+                                    "min_12m": float(serie.min()),
+                                    "min_6m": float(serie.tail(126).min())
+                                }
+                        except: pass
+                    sucesso_download = True
+                except Exception as e:
+                    print(f"⚠️ Plano A falhou ({e}). Tentando Plano B...")
+
+                # 3. Ativos - Plano B: Se falhar (timeout), baixa só o dia de hoje (mais rápido)
+                if not sucesso_download or not cotacoes_novas:
                     try:
-                        serie = dados[t]['Close'] if len(tickers) > 1 else dados['Close']
-                        cotacoes_novas[t] = {
-                            "atual": float(serie.iloc[-1]),
-                            "min_12m": float(serie.min()),
-                            "min_6m": float(serie.tail(126).min())
-                        }
+                        dados_curtos = yf.download(tickers, period="1d", group_by='ticker', progress=False)
+                        for t in tickers:
+                            try:
+                                serie = dados_curtos[t]['Close'] if len(tickers) > 1 else dados_curtos['Close']
+                                if not serie.empty:
+                                    cotacoes_novas[t] = {
+                                        "atual": float(serie.iloc[-1]),
+                                        "min_12m": 0, # Sem histórico
+                                        "min_6m": 0
+                                    }
+                            except: pass
                     except: pass
             
+            # Atualiza Global
             CACHE["timestamp"] = time.time()
             CACHE["cotacoes"] = cotacoes_novas
             CACHE["dolar"] = dolar_novo
             
         except Exception as e:
-            print(f"⚠️ Erro no Cache: {e}")
+            print(f"⚠️ Erro Crítico no Cache: {e}")
         
         return CACHE["cotacoes"], CACHE["dolar"]
 
@@ -100,7 +128,8 @@ class handler(BaseHTTPRequestHandler):
         if item["tipo"] == "Ação" and lpa > 0 and vpa > 0:
             try:
                 metrics["vi_graham"] = math.sqrt(22.5 * lpa * vpa)
-                metrics["mg_graham"] = ((metrics["vi_graham"] - preco_atual) / preco_atual) * 100
+                if preco_atual > 0:
+                    metrics["mg_graham"] = ((metrics["vi_graham"] - preco_atual) / preco_atual) * 100
             except: pass
 
         # Bazin (Teto 6%)
@@ -109,7 +138,8 @@ class handler(BaseHTTPRequestHandler):
             if preco_atual > 0:
                 metrics["mg_bazin"] = ((metrics["teto_bazin"] - preco_atual) / preco_atual) * 100
                 metrics["dy_atual"] = (dy_proj_reais / preco_atual) * 100
-            metrics["doc_yield"] = (dy_proj_reais / pm) * 100 if pm > 0 else 0
+            if pm > 0:
+                metrics["doc_yield"] = (dy_proj_reais / pm) * 100
 
         # P/VP
         if vpa > 0 and preco_atual > 0:
@@ -150,7 +180,7 @@ class handler(BaseHTTPRequestHandler):
             
             # Bônus Bola de Neve
             if metrics["magic_number"] > 0 and item["qtd"] >= metrics["magic_number"]:
-                score += 10; motivo.append("Efeito Bola de Neve ❄️")
+                score += 10; motivo.append("Bola de Neve ❄️")
 
         # Decisão Final
         if falta_comprar > 0:
@@ -182,8 +212,11 @@ class handler(BaseHTTPRequestHandler):
                 item = item_orig.copy()
                 ticker_full = (item["ticker"] + ".SA") if item["tipo"] in ["Ação", "FII"] else item["ticker"]
                 dados_preco = market_data.get(ticker_full, {})
-                preco = dados_preco.get("atual", item.get("valor_fixo", item["pm"]))
                 
+                # Se não tiver preço online, usa o PM ou valor fixo para não zerar
+                preco = dados_preco.get("atual", 0)
+                if preco == 0: preco = item.get("valor_fixo", item["pm"])
+
                 fator = dolar_atual if item.get("moeda") == "USD" else 1
                 preco_brl = preco * fator
                 total_atual = item["qtd"] * preco_brl

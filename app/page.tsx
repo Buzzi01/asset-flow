@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { 
   TrendingUp, PieChart, Wallet, DollarSign, Activity, 
-  Target, Info, AlertTriangle, Layers, Snowflake, ArrowUpRight 
+  Target, Info, AlertTriangle, Layers, Snowflake, ArrowUpRight, RefreshCw 
 } from 'lucide-react';
 import { PieChart as RePieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -116,9 +116,33 @@ const AssetRow = ({ ativo, tab }: { ativo: any, tab: string }) => {
 export default function Home() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('Resumo');
 
-  useEffect(() => { fetch('/api/index').then(res => res.json()).then(d => { setData(d); setLoading(false); }); }, []);
+  const fetchData = () => {
+    setLoading(true);
+    setError(null);
+    fetch('/api/index')
+      .then(async (res) => {
+        if (!res.ok) {
+           const text = await res.text();
+           throw new Error(`Erro API: ${res.status} - ${text.substring(0, 50)}...`);
+        }
+        return res.json();
+      })
+      .then(d => {
+        if(d.status === 'Erro') throw new Error(d.detalhe);
+        setData(d);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setError("Não foi possível carregar os dados. O servidor pode estar sobrecarregado ou o JSON está inválido.");
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => { fetchData(); }, []);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
@@ -137,6 +161,18 @@ export default function Home() {
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-500 gap-4">
       <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      <p className="animate-pulse text-sm">Analisando mercado...</p>
+    </div>
+  );
+
+  if (error) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-red-400 gap-4 p-4 text-center">
+      <AlertTriangle size={48} />
+      <h2 className="text-xl font-bold">Ocorreu um erro</h2>
+      <p className="text-sm text-slate-500 max-w-md">{error}</p>
+      <button onClick={fetchData} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors">
+        <RefreshCw size={16} /> Tentar Novamente
+      </button>
     </div>
   );
 
@@ -156,7 +192,7 @@ export default function Home() {
           </div>
         </div>
         
-        {/* ABAS INTEGRADAS NO HEADER */}
+        {/* ABAS */}
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar">
           {categories.map((c) => (
             <button key={c.id} onClick={() => setTab(c.id)} 
@@ -176,10 +212,8 @@ export default function Home() {
         {/* 1. SECTION: RESUMO EXECUTIVO (KPIs) */}
         {tab === 'Resumo' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2">
-            {/* KPI 1: Renda Passiva */}
             <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="bg-green-500 text-green-400"/>
             
-            {/* KPI 2: Top Oportunidade */}
             <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
                <div className="flex justify-between items-start">
                   <div className="p-2 rounded-lg bg-blue-500/20"><TrendingUp size={20} className="text-blue-400"/></div>
@@ -196,7 +230,6 @@ export default function Home() {
                </div>
             </div>
 
-            {/* KPI 3: Gráfico Mini */}
             <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 md:col-span-2 flex items-center">
                <div className="h-24 w-24 shrink-0">
                   <ResponsiveContainer width="100%" height="100%">
@@ -219,7 +252,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* 2. SECTION: RADAR DE RISCO (Aparece se tiver alertas) */}
+        {/* 2. RADAR DE RISCO */}
         {(tab === 'Resumo' || tab === 'Radar') && data?.alertas?.length > 0 && (
            <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 flex items-start gap-3 animate-in fade-in">
               <AlertTriangle className="text-red-500 shrink-0" size={20} />
@@ -232,7 +265,7 @@ export default function Home() {
            </div>
         )}
 
-        {/* 3. SECTION: TABELA PRINCIPAL (Full Width) */}
+        {/* 3. TABELA (Grid) */}
         {tab !== 'Radar' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4">
             <div className="overflow-x-auto">
@@ -255,7 +288,7 @@ export default function Home() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500">Nenhum ativo encontrado nesta categoria.</td>
+                      <td colSpan={7} className="p-8 text-center text-slate-500">Nenhum ativo encontrado.</td>
                     </tr>
                   )}
                 </tbody>
@@ -264,11 +297,7 @@ export default function Home() {
           </div>
         )}
         
-        {/* Footer */}
-        <div className="text-center text-[10px] text-slate-600 mt-8">
-           AssetFlow v2.0 • Dados com delay de 15min
-        </div>
-
+        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v2.2</div>
       </div>
     </main>
   );
