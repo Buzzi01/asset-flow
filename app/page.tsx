@@ -1,3 +1,4 @@
+// app/page.tsx
 'use client';
 import { useState, useEffect } from 'react';
 import { 
@@ -16,6 +17,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('Resumo');
 
+  // Busca dados do Python (Porta 5328 via proxy)
   const fetchData = () => {
     setLoading(true);
     setError(null);
@@ -34,7 +36,7 @@ export default function Home() {
       })
       .catch(err => {
         console.error(err);
-        setError("Não foi possível carregar os dados. Verifique se o backend.py está rodando.");
+        setError("Não foi possível carregar os dados. Verifique se o Iniciar AssetFlow.bat está rodando.");
         setLoading(false);
       });
   };
@@ -76,7 +78,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20">
       
-      {/* HEADER */}
+      {/* HEADER FIXO */}
       <div className="sticky top-0 z-30 bg-[#0b0f19]/80 backdrop-blur-md border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -89,7 +91,7 @@ export default function Home() {
           </div>
         </div>
         
-        {/* ABAS */}
+        {/* NAVEGAÇÃO DE ABAS */}
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar">
           {categories.map((c) => (
             <button key={c.id} onClick={() => setTab(c.id)} 
@@ -106,7 +108,7 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
         
-        {/* SECTION: KPI & GRÁFICOS */}
+        {/* SECTION 1: KPIS E GRÁFICOS */}
         {tab === 'Resumo' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2">
             <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="bg-green-500 text-green-400"/>
@@ -131,12 +133,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* SECTION: ALERTAS */}
+        {/* SECTION 2: ALERTAS */}
         {(tab === 'Resumo' || tab === 'Radar') && (
            <RiskRadar alertas={data?.alertas} />
         )}
 
-        {/* SECTION: TABELA */}
+        {/* SECTION 3: TABELA DETALHADA */}
         {tab !== 'Radar' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4">
             <div className="overflow-x-auto">
@@ -144,9 +146,9 @@ export default function Home() {
                 <thead className="bg-slate-950/50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
                   <tr>
                     <th className="p-4">Ativo</th>
-                    <th className="p-4 text-center">Status</th>
-                    <th className="p-4 text-right">Preço</th>
-                    <th className="p-4 text-right hidden sm:table-cell">Meta</th>
+                    <th className="p-4 text-right">Cotação / PM</th>
+                    <th className="p-4 text-right">Lucro / Prej.</th>
+                    <th className="p-4 text-right hidden sm:table-cell">Meta na Categoria</th>
                     <th className="p-4 text-right">Aporte</th>
                     {(tab === 'FII' || tab === 'Resumo') && <th className="p-4 text-center hidden lg:table-cell">Bola de Neve</th>}
                     {(tab === 'Ação' || tab === 'Resumo') && <th className="p-4 text-right hidden lg:table-cell">Graham</th>}
@@ -168,7 +170,7 @@ export default function Home() {
           </div>
         )}
         
-        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v3.0 Desktop</div>
+        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v3.1 (Desktop Edition)</div>
       </div>
     </main>
   );

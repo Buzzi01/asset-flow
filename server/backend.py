@@ -7,74 +7,65 @@ import os
 import time
 import pandas as pd
 import numpy as np
-import sys
-import os
 
 app = Flask(__name__)
 CORS(app)
 
 CACHE = { "timestamp": 0, "data": None, "timeout": 3600 }
 
+def get_path(filename):
+    return os.path.join(os.path.dirname(__file__), filename)
+
 def load_database():
     try:
-        caminho = os.path.join(os.path.dirname(__file__), 'carteira.json')
-        with open(caminho, 'r', encoding='utf-8') as f:
+        with open(get_path('carteira.json'), 'r', encoding='utf-8') as f:
             return json.load(f)
     except: return []
 
-# --- FUNÇÃO DE LIMPEZA (CORREÇÃO DO ERRO NaN) ---
+def load_categories():
+    try:
+        with open(get_path('categorias.json'), 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except: return {}
+
 def sanitize(val):
-    """Converte NaN ou Infinito para 0 para não quebrar o JSON"""
     if isinstance(val, float):
-        if math.isnan(val) or math.isinf(val):
-            return 0
+        if math.isnan(val) or math.isinf(val): return 0
     return val
+
+def clean_dict(d):
+    new_dict = {}
+    for k, v in d.items():
+        if isinstance(v, dict): new_dict[k] = clean_dict(v)
+        elif isinstance(v, float): new_dict[k] = sanitize(v)
+        else: new_dict[k] = v
+    return new_dict
 
 def calculate_metrics(item, dados_preco):
     preco_atual = dados_preco.get("atual", 0)
-    
-    # Inicia tudo zerado
-    metrics = { 
-        "vi_graham": 0, "mg_graham": 0, "teto_bazin": 0, "mg_bazin": 0, 
-        "p_vp": 0, "doc_yield": 0, "dy_atual": 0, "magic_number": 0, 
-        "renda_mensal_est": 0 
-    }
+    metrics = { "vi_graham": 0, "mg_graham": 0, "teto_bazin": 0, "mg_bazin": 0, "p_vp": 0, "magic_number": 0, "renda_mensal_est": 0 }
     
     try:
-        lpa = item.get("lpa_manual", 0)
-        vpa = item.get("vpa_manual", 0)
-        dy_proj_reais = item.get("dy_proj_12m", 0)
+        lpa = item.get("lpa_manual", 0); vpa = item.get("vpa_manual", 0)
+        dy_proj = item.get("dy_proj_12m", 0); qtd = item.get("qtd", 0)
         pm = item.get("pm", 0)
-        qtd = item.get("qtd", 0)
 
-        if dy_proj_reais > 0:
-            metrics["renda_mensal_est"] = (dy_proj_reais * qtd) / 12
-            if preco_atual > 0: 
-                metrics["magic_number"] = math.ceil(preco_atual / (dy_proj_reais / 12))
+        if dy_proj > 0:
+            metrics["renda_mensal_est"] = (dy_proj * qtd) / 12
+            if preco_atual > 0: metrics["magic_number"] = math.ceil(preco_atual / (dy_proj / 12))
 
         if item["tipo"] == "Ação" and lpa > 0 and vpa > 0:
-            try:
-                metrics["vi_graham"] = math.sqrt(22.5 * lpa * vpa)
-                if preco_atual > 0: 
-                    metrics["mg_graham"] = ((metrics["vi_graham"] - preco_atual) / preco_atual) * 100
-            except: pass
+            metrics["vi_graham"] = math.sqrt(22.5 * lpa * vpa)
+            if preco_atual > 0: metrics["mg_graham"] = ((metrics["vi_graham"] - preco_atual) / preco_atual) * 100
 
-        if dy_proj_reais > 0:
-            metrics["teto_bazin"] = dy_proj_reais / 0.06
-            if preco_atual > 0:
-                metrics["mg_bazin"] = ((metrics["teto_bazin"] - preco_atual) / preco_atual) * 100
-                metrics["dy_atual"] = (dy_proj_reais / preco_atual) * 100
-            if pm > 0: 
-                metrics["doc_yield"] = (dy_proj_reais / pm) * 100
+        if dy_proj > 0:
+            metrics["teto_bazin"] = dy_proj / 0.06
+            if preco_atual > 0: metrics["mg_bazin"] = ((metrics["teto_bazin"] - preco_atual) / preco_atual) * 100
 
-        if vpa > 0 and preco_atual > 0: 
-            metrics["p_vp"] = preco_atual / vpa
+        if vpa > 0 and preco_atual > 0: metrics["p_vp"] = preco_atual / vpa
             
-    except Exception as e:
-        print(f"Erro calculo metricas {item.get('ticker')}: {e}")
-
-    # Limpa todos os valores antes de retornar
-    return {k: sanitize(v) for k, v in metrics.items()}
+    except: pass
+    return metrics
 
 def apply_strategy(item, metrics, falta_comprar, dados_preco):
     rec = "NEUTRO"; cor = "gray"; motivo = []; score = 0 
@@ -106,111 +97,112 @@ def get_data():
         print("⚡ Cache Local Utilizado")
         return jsonify(CACHE["data"])
 
-    print("🔄 Baixando Historico Completo...")
+    print("🔄 Calculando Lucros e Metas...")
     carteira = load_database()
+    metas_categorias = load_categories()
     
-    tickers = [
-        (i["ticker"] + ".SA") if i["tipo"] in ["Ação", "FII"] else i["ticker"] 
-        for i in carteira if i["tipo"] not in ["Renda Fixa", "Reserva"]
-    ]
-    
-    cotacoes = {}
-    dolar = 5.82
+    tickers = [(i["ticker"] + ".SA") if i["tipo"] in ["Ação", "FII"] else i["ticker"] for i in carteira if i["tipo"] not in ["Renda Fixa", "Reserva"]]
+    cotacoes = {}; dolar = 5.82
 
     if tickers:
         try:
-            # Pega Dolar
             try:
                 usd = yf.Ticker("BRL=X").history(period="1d")
                 if not usd.empty: dolar = float(usd['Close'].iloc[-1])
             except: pass
-
-            # Pega Ativos
-            dados = yf.download(tickers, period="1y", group_by='ticker', progress=False, threads=True)
             
+            dados = yf.download(tickers, period="1y", group_by='ticker', progress=False, threads=True)
             for t in tickers:
                 try:
                     serie = dados[t]['Close'] if len(tickers) > 1 else dados['Close']
                     if not serie.empty:
-                        atual = float(serie.iloc[-1])
-                        min_12m = float(serie.min())
-                        min_6m = float(serie.tail(126).min())
-                        
                         cotacoes[t] = {
-                            "atual": sanitize(atual),
-                            "min_12m": sanitize(min_12m),
-                            "min_6m": sanitize(min_6m)
+                            "atual": sanitize(float(serie.iloc[-1])),
+                            "min_6m": sanitize(float(serie.tail(126).min()))
                         }
                 except: pass
-        except Exception as e: print(f"Erro download: {e}")
+        except: pass
 
-    resumo = {"Total": 0, "RendaMensal": 0}
+    resumo = {"Total": 0, "RendaMensal": 0, "TotalInvestido": 0, "LucroTotal": 0}
+    for cat in metas_categorias: resumo[cat] = 0
+    
     ativos_temp = []
 
+    # 1. TOTAIS GERAIS
     for item_orig in carteira:
         item = item_orig.copy()
         ticker_full = (item["ticker"] + ".SA") if item["tipo"] in ["Ação", "FII"] else item["ticker"]
         
         dados_preco = cotacoes.get(ticker_full, {})
-        # Fallback de preço se falhar o download
         preco = dados_preco.get("atual", 0)
         if preco == 0: preco = item.get("valor_fixo", item.get("pm", 0))
         
         fator = dolar if item.get("moeda") == "USD" else 1
-        item["_total"] = item["qtd"] * preco * fator
-        item["preco_atual"] = preco
         
-        resumo["Total"] += item["_total"]
+        # Matematica Financeira
+        item["preco_atual"] = preco
+        item["total_atual"] = item["qtd"] * preco * fator
+        item["total_investido"] = item["qtd"] * item["pm"] * fator
+        item["lucro_valor"] = item["total_atual"] - item["total_investido"]
+        item["lucro_pct"] = (item["lucro_valor"] / item["total_investido"] * 100) if item["total_investido"] > 0 else 0
+        
+        resumo["Total"] += item["total_atual"]
+        resumo["TotalInvestido"] += item["total_investido"]
+        
         if item["tipo"] not in resumo: resumo[item["tipo"]] = 0
-        resumo[item["tipo"]] += item["_total"]
+        resumo[item["tipo"]] += item["total_atual"]
         
         item["_dados_preco"] = dados_preco
         ativos_temp.append(item)
 
+    resumo["LucroTotal"] = resumo["Total"] - resumo["TotalInvestido"]
     ativos_proc = []; alertas = []
+
+    # 2. METAS RELATIVAS (TOP-DOWN)
     for item in ativos_temp:
-        total_carteira = resumo["Total"] if resumo["Total"] > 0 else 1
-        pct = (item["_total"] / total_carteira * 100)
+        # Pega o total da CATEGORIA deste ativo (ex: Total investido em Ações)
+        total_categoria = resumo.get(item["tipo"], 1)
         
-        meta_val = resumo["Total"] * (item.get("meta", 0) / 100)
-        falta = meta_val - item["_total"]
+        # Porcentagem que esse ativo ocupa NA CATEGORIA (ex: ITUB é 10% das Ações)
+        pct_na_categoria = (item["total_atual"] / total_categoria * 100) if total_categoria > 0 else 0
         
-        if pct > item.get("meta", 0) * 1.5: alertas.append(f"{item['ticker']} Concentrado ({pct:.1f}%)")
+        # Calculo de Aporte (Falta Comprar)
+        # Meta Global = Meta Categoria (25%) * Meta Ativo (10%) = 2.5% do Patrimonio Total
+        meta_cat_pct = metas_categorias.get(item["tipo"], 0) / 100
+        meta_ativo_pct = item.get("meta", 0) / 100
+        meta_global_valor = resumo["Total"] * meta_cat_pct * meta_ativo_pct
+        
+        falta = meta_global_valor - item["total_atual"]
+
+        if pct_na_categoria > item.get("meta", 0) * 1.5: 
+            alertas.append(f"{item['ticker']} estourou meta na categoria ({pct_na_categoria:.1f}%)")
 
         metrics = calculate_metrics(item, item["_dados_preco"])
         resumo["RendaMensal"] += metrics["renda_mensal_est"]
-        
         rec, cor, score, motivo = apply_strategy(item, metrics, falta, item["_dados_preco"])
         
-        # Limpa dados internos
         item_final = {k:v for k,v in item.items() if not k.startswith('_')}
         item_final["min_6m"] = sanitize(item["_dados_preco"].get("min_6m", 0))
 
-        # SANITIZA TUDO ANTES DE ADICIONAR
         ativo_pronto = { 
             **item_final, **metrics, 
-            "pct_atual": sanitize(pct), 
+            "pct_na_categoria": sanitize(pct_na_categoria), # Essa é a % que vai pro Front
             "falta_comprar": sanitize(falta), 
             "recomendacao": rec, "cor_rec": cor, "score": score, "motivo": motivo 
         }
-        ativos_proc.append(ativo_pronto)
+        ativos_proc.append(clean_dict(ativo_pronto))
 
     ativos_proc.sort(key=lambda x: x["score"], reverse=True)
-    
-    # Sanitiza o gráfico também
-    grafico = [{"name": k, "value": sanitize(v)} for k, v in resumo.items() if k not in ["Total", "RendaMensal"] and v > 0]
+    grafico = [{"name": k, "value": sanitize(v)} for k, v in resumo.items() if k not in ["Total", "RendaMensal", "TotalInvestido", "LucroTotal"] and v > 0]
     
     response_data = { 
-        "status": "Sucesso", 
-        "dolar": sanitize(dolar), 
+        "status": "Sucesso", "dolar": sanitize(dolar), 
         "resumo": {k: sanitize(v) for k,v in resumo.items()}, 
-        "grafico": grafico, 
-        "alertas": alertas, 
-        "ativos": ativos_proc 
+        "grafico": grafico, "alertas": alertas, "ativos": ativos_proc 
     }
-    
     CACHE["timestamp"] = time.time(); CACHE["data"] = response_data
     return jsonify(response_data)
 
 if __name__ == '__main__':
+    print("🚀 Backend Financeiro Rodando na porta 5328...")
     app.run(port=5328)
