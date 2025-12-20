@@ -1,7 +1,7 @@
 # server/services.py
 import sys
 import os
-import shutil # NOVO: Para copiar arquivos
+import shutil
 import yfinance as yf
 import math
 import pandas as pd
@@ -128,6 +128,7 @@ class PortfolioService:
 
             final_list = []
             alertas = []
+            
             for item in ativos_proc:
                 pos = item["obj"]
                 cat_name = pos.asset.category.name
@@ -140,9 +141,26 @@ class PortfolioService:
                 
                 rec_text, status, score, motivo = self._apply_strategy(pos, item["metrics"], falta, item["preco_atual"], item["min_6m"])
                 
+                # --- SISTEMA DE ALERTAS (VERSÃO BUY & HOLD) ---
+                
+                # 1. Rebalanceamento (Amarelo): Só avisa para não comprar mais desse por enquanto
                 if pos.target_percent and pct_na_categoria > pos.target_percent * 1.5:
-                    alertas.append(f"{pos.asset.ticker} estourou meta ({pct_na_categoria:.1f}%)")
+                    alertas.append(f"REBALANCEAR:{pos.asset.ticker} ultrapassou a meta ideal (Está com {pct_na_categoria:.1f}%)")
 
+                # 2. Mínima (Verde): Bom ponto de entrada
+                if item["min_6m"] > 0 and item["preco_atual"] <= item["min_6m"] * 1.03:
+                     alertas.append(f"QEDA:{pos.asset.ticker} próximo da mínima de 6 meses")
+
+                # 3. Valor/Graham (Azul): Ação barata (Promoção)
+                if "mg_graham" in item["metrics"] and item["metrics"]["mg_graham"] > 50:
+                     alertas.append(f"GRAHAM:{pos.asset.ticker} está descontada (Potencial de Valor)")
+
+                # 4. Bola de Neve (Ciano): Faltam poucas cotas
+                mn = item["metrics"].get("magic_number", 0)
+                if mn > 0 and pos.quantity < mn and (mn - pos.quantity) <= 5:
+                     alertas.append(f"MAGIC:{pos.asset.ticker} quase atingindo o Número Mágico (Faltam {int(mn - pos.quantity)})")
+                
+                # ----------------------------------------
                 final_list.append({
                     "ticker": pos.asset.ticker,
                     "tipo": cat_name,
@@ -201,32 +219,22 @@ class PortfolioService:
         else: status = "MANTER"; rec_text = "MANTER"
         return rec_text, status, score, ", ".join(motivo)
 
-    # --- NOVO: Função de Backup ---
     def _backup_database(self):
-        """Cria uma cópia de segurança do banco"""
         try:
             backup_dir = 'backups'
-            if not os.path.exists(backup_dir):
-                os.makedirs(backup_dir)
-            
-            # Nome do arquivo: assetflow_backup_YYYY-MM-DD.db
+            if not os.path.exists(backup_dir): os.makedirs(backup_dir)
             filename = f"assetflow_backup_{date.today()}.db"
             dest = os.path.join(backup_dir, filename)
-            
-            # Copia o arquivo .db
             shutil.copy('assetflow.db', dest)
-            print(f"💾 Backup criado com sucesso: {dest}")
-        except Exception as e:
-            print(f"❌ Erro ao criar backup: {e}")
+            print(f"💾 Backup criado: {dest}")
+        except Exception as e: print(f"❌ Erro backup: {e}")
 
     def take_daily_snapshot(self):
-        """JOB: Snapshot + Backup"""
-        print("📸 JOB: Gerando Snapshot Diário...")
+        print("📸 JOB: Snapshot...")
         with Session() as session:
             positions = session.query(Position).all()
             total_equity = 0; total_invested = 0
             dolar_rate = self.get_usd_rate()
-
             for pos in positions:
                 mdata = pos.asset.market_data[0] if pos.asset.market_data else None
                 try:
@@ -234,23 +242,18 @@ class PortfolioService:
                     qtd = float(pos.quantity or 0)
                     pm = float(pos.average_price or 0)
                 except: price=0; qtd=0; pm=0
-                
                 fator = dolar_rate if pos.asset.currency == 'USD' else 1.0
                 total_equity += (qtd * price * fator)
                 total_invested += (qtd * pm * fator)
-                
             today = date.today()
             existing = session.query(PortfolioSnapshot).filter(PortfolioSnapshot.date == today).first()
             if existing:
-                existing.total_equity = total_equity
-                existing.total_invested = total_invested
+                existing.total_equity = total_equity; existing.total_invested = total_invested
                 existing.profit = total_equity - total_invested
             else:
                 snap = PortfolioSnapshot(date=today, total_equity=total_equity, total_invested=total_invested, profit=total_equity-total_invested)
                 session.add(snap)
             session.commit()
-        
-        # Chama o backup logo após salvar o snapshot
         self._backup_database()
 
     def get_history_data(self):
