@@ -5,6 +5,8 @@ import shutil
 import yfinance as yf
 import math
 import pandas as pd
+import requests
+import time
 from datetime import datetime, date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -40,45 +42,92 @@ class PortfolioService:
         return 5.80
 
     def update_prices(self):
-        print("🔄 JOB: Iniciando atualização sequencial...")
-        with Session() as session:
-            assets = session.query(Asset).filter(Asset.ticker != 'Nubank Caixinha').all()
+        print("🔄 JOB: Atualizando Preços e Fundamentos (Modo Nativo + Pausa)...")
+        
+        # REMOVIDO: A sessão manual que causava o erro. Deixamos o yfinance gerenciar.
+
+        with Session() as session_db:
+            assets = session_db.query(Asset).filter(Asset.ticker != 'Nubank Caixinha').all()
             count_ok = 0; count_err = 0
 
             for asset in assets:
+                # Tratamento do Símbolo (.SA)
                 if asset.category.name in ['Ação', 'FII', 'Renda Fixa', 'ETF']:
-                    symbol = f"{asset.ticker}.SA"
+                    symbol = f"{asset.ticker}.SA" if not asset.ticker.endswith('.SA') else asset.ticker
                 else:
                     symbol = asset.ticker
                 
                 try:
+                    # CORREÇÃO: Chamada simples, sem 'session='
                     stock = yf.Ticker(symbol)
-                    hist = stock.history(period="1y")
                     
-                    if hist.empty:
-                        print(f"⚠️ {asset.ticker}: Sem dados.")
-                        count_err += 1
-                        continue
+                    # --- PREÇO (Histórico) ---
+                    # Periodo curto para ser rápido
+                    hist = stock.history(period="5d")
+                    current_price = 0.0
+                    min_6m = 0.0
+                    
+                    if not hist.empty:
+                        current_price = float(hist['Close'].iloc[-1])
+                        # Se quiser ser muito preciso na mínima, teria que baixar "6mo", 
+                        # mas isso deixa lento. Vamos focar no preço atual primeiro.
+                    
+                    # --- FUNDAMENTOS ---
+                    lpa = 0; vpa = 0; dy = 0
+                    
+                    # Só tenta buscar info pesada se for Ação/FII
+                    if asset.category.name in ['Ação', 'FII', 'Internacional']:
+                        try:
+                            # Tenta pegar infos básicas. Se o Yahoo bloquear, vai cair no except e seguir vida.
+                            info = stock.info
+                            
+                            lpa = info.get('trailingEps') or info.get('forwardEps') or 0
+                            vpa = info.get('bookValue') or info.get('navPrice') or 0
+                            
+                            dy_raw = info.get('dividendYield', 0) or 0
+                            if dy_raw and current_price > 0:
+                                dy = info.get('dividendRate') or (current_price * dy_raw)
+                        except Exception as e_info:
+                            # Falha silenciosa nos fundamentos para não travar o preço
+                            # print(f"   ⚠️ Info n/d para {asset.ticker}") 
+                            pass
 
-                    current_price = float(hist['Close'].iloc[-1])
-                    min_6m = float(hist['Close'].tail(126).min())
-
-                    mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
+                    # --- SALVAR NO BANCO ---
+                    
+                    # 1. Market Data
+                    mdata = session_db.query(MarketData).filter_by(asset_id=asset.id).first()
                     if not mdata:
                         mdata = MarketData(asset_id=asset.id)
-                        session.add(mdata)
+                        session_db.add(mdata)
                     
-                    mdata.price = current_price
-                    mdata.min_6m = min_6m
-                    mdata.date = datetime.now()
-                    
-                    print(f"   ✅ {asset.ticker}: R$ {current_price:.2f}")
+                    if current_price > 0:
+                        mdata.price = current_price
+                        mdata.date = datetime.now()
+                        if not hist.empty and len(hist) > 100:
+                             mdata.min_6m = float(hist['Close'].min())
+
+                    # 2. Position (Fundamentos)
+                    pos = session_db.query(Position).filter_by(asset_id=asset.id).first()
+                    if pos:
+                        if (pos.manual_lpa or 0) == 0 and lpa != 0: pos.manual_lpa = float(lpa)
+                        if (pos.manual_vpa or 0) == 0 and vpa != 0: pos.manual_vpa = float(vpa)
+                        if (pos.manual_dy or 0) == 0 and dy != 0: pos.manual_dy = float(dy)
+
+                    # Log de Sucesso
+                    infos_extras = ""
+                    if lpa > 0 or vpa > 0: infos_extras = f"| LPA: {lpa:.2f} VPA: {vpa:.2f}"
+                    print(f"   ✅ {asset.ticker}: R$ {current_price:.2f} {infos_extras}")
                     count_ok += 1
+                    
                 except Exception as e:
-                    print(f"   ❌ {asset.ticker}: Erro - {e}")
+                    print(f"   ❌ {asset.ticker}: Falha - {e}")
                     count_err += 1
+                
+                # ESTRATÉGIA DE SEGURANÇA: Pausa de 0.5 segundos entre requisições
+                # Isso evita que o Yahoo bloqueie seu IP por "spam"
+                time.sleep(0.5)
             
-            session.commit()
+            session_db.commit()
             print(f"🏁 Fim do JOB. Sucessos: {count_ok} | Falhas: {count_err}")
 
     def get_dashboard_data(self):
@@ -161,6 +210,7 @@ class PortfolioService:
                      alertas.append(f"MAGIC:{pos.asset.ticker} quase atingindo o Número Mágico (Faltam {int(mn - pos.quantity)})")
                 
                 # ----------------------------------------
+
                 final_list.append({
                     "ticker": pos.asset.ticker,
                     "tipo": cat_name,
@@ -175,6 +225,13 @@ class PortfolioService:
                     "lucro_pct": ((item["total_atual"] - item["total_investido"]) / item["total_investido"] * 100) if item["total_investido"] > 0 else 0,
                     "pct_na_categoria": pct_na_categoria,
                     "falta_comprar": falta,
+                    
+                    # --- CORREÇÃO VITAL: Retornando dados manuais para o Frontend ---
+                    "manual_dy": pos.manual_dy,
+                    "manual_lpa": pos.manual_lpa,
+                    "manual_vpa": pos.manual_vpa,
+                    # -----------------------------------------------------------------
+
                     "recomendacao": rec_text, "status": status, "score": score, "motivo": motivo,
                     **item["metrics"]
                 })
@@ -269,8 +326,6 @@ class PortfolioService:
                 })
             return history
         
-        # ... (métodos anteriores) ...
-
     def update_position(self, ticker, qtd, pm, meta, dy=0, lpa=0, vpa=0):
         """Atualiza posição + indicadores fundamentalistas"""
         print(f"📝 Atualizando {ticker} | Qtd:{qtd} PM:{pm} Meta:{meta}% | DY:{dy} LPA:{lpa} VPA:{vpa}")
