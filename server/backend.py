@@ -1,3 +1,4 @@
+# server/backend.py
 import sys
 import os
 import threading
@@ -20,30 +21,34 @@ service = PortfolioService()
 # --- JOB AGENDADO ---
 def scheduled_update():
     """Roda automaticamente em segundo plano"""
+    # Como agora usamos sessão segura no services.py, não precisamos de app.app_context aqui obrigatoriamente,
+    # mas mantemos para compatibilidade futura com plugins flask
     with app.app_context():
-        # 1. Atualiza Preços
         service.update_prices()
-        # 2. Tira a Foto do Patrimônio
         service.take_daily_snapshot()
 
+# CORREÇÃO 1.3 e 2.3: Scheduler seguro
 scheduler = BackgroundScheduler()
-# Executa a cada 30 minutos
-scheduler.add_job(func=scheduled_update, trigger="interval", minutes=30)
-scheduler.start()
+if not scheduler.running:
+    scheduler.add_job(func=scheduled_update, trigger="interval", minutes=30)
+    scheduler.start()
 
 @app.route('/api/index', methods=['GET'])
 def get_data():
     force = request.args.get('force') == 'true'
-    
-    # Se pedir force, rodamos em uma thread separada para não travar a resposta
-    # Mas para simplificar, se for force, rodamos síncrono (pode demorar um pouco)
     if force:
         try:
+            # Roda síncrono para dar feedback imediato ao usuário
             service.update_prices()
             service.take_daily_snapshot()
         except: pass
         
     data = service.get_dashboard_data()
+    return jsonify(data)
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    data = service.get_history_data()
     return jsonify(data)
 
 @app.route('/api/health', methods=['GET'])
@@ -52,24 +57,21 @@ def health():
 
 # --- TAREFA DE INICIALIZAÇÃO EM BACKGROUND ---
 def initial_background_update():
-    """Espera o servidor subir e roda a atualização sem travar o boot"""
     print("⏳ Aguardando servidor iniciar para atualizar dados...")
-    time.sleep(3) # Espera 3s para garantir que o Flask subiu
+    time.sleep(3) 
     try:
         service.update_prices()
         service.take_daily_snapshot()
     except Exception as e:
-        print(f"⚠️ Erro na atualização inicial (background): {e}")
+        print(f"⚠️ Erro na atualização inicial: {e}")
 
 if __name__ == '__main__':
     print("🚀 AssetFlow Server (SQL Edition) Iniciando...")
     
-    # MUDANÇA CRÍTICA: Roda a atualização inicial em uma Thread separada
-    # Isso impede que o erro do Yahoo trave a abertura do site
+    # Thread separada para não travar o boot do Flask
     boot_thread = threading.Thread(target=initial_background_update)
-    boot_thread.daemon = True # Garante que fecha se o programa fechar
+    boot_thread.daemon = True 
     boot_thread.start()
     
-    # Inicia o servidor imediatamente
     print("✅ Servidor pronto na porta 5328.")
     app.run(port=5328, debug=False, use_reloader=False)

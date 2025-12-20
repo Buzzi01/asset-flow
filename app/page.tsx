@@ -2,16 +2,18 @@
 import { useState, useEffect } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3 
+  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart 
 } from 'lucide-react';
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
 import { AssetRow } from './components/AssetRow';
 import { AllocationChart } from './components/AllocationChart';
 import { RiskRadar } from './components/RiskRadar';
+import { HistoryChart } from './components/HistoryChart';
 
 export default function Home() {
   const [data, setData] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]); // Estado para o histórico
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +26,7 @@ export default function Home() {
     setError(null);
     const url = force ? '/api/index?force=true' : '/api/index';
 
+    // 1. Busca Dados Principais
     fetch(url)
       .then(async (res) => {
         if (!res.ok) {
@@ -44,12 +47,19 @@ export default function Home() {
         setLoading(false);
         setRefreshing(false);
       });
+
+    // 2. Busca Histórico (Em paralelo)
+    fetch('/api/history')
+      .then(res => res.json())
+      .then(h => setHistory(h))
+      .catch(console.error);
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
+    { id: 'Evolução', icon: <LineChart size={16} /> }, // Nova Aba
     { id: 'Ação', icon: <TrendingUp size={16} /> },
     { id: 'FII', icon: <Activity size={16} /> },
     { id: 'Internacional', icon: <DollarSign size={16} /> },
@@ -59,7 +69,7 @@ export default function Home() {
     { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
   ];
 
-  const filteredAssets = data?.ativos?.filter((a: any) => tab === 'Resumo' || tab === 'Radar' ? true : a.tipo === tab) || [];
+  const filteredAssets = data?.ativos?.filter((a: any) => tab === 'Resumo' || tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
   const topCompras = data?.ativos?.filter((a: any) => a.falta_comprar > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
 
@@ -93,12 +103,11 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-4">
-             {/* BOTÃO DE REFRESH MANUAL */}
              <button 
                 onClick={() => fetchData(true)} 
                 disabled={refreshing}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50"
-                title="Forçar atualização de preços"
+                title="Forçar atualização"
              >
                 <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
              </button>
@@ -127,38 +136,13 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
         
-        {/* SECTION 1: KPIS E GRÁFICOS */}
+        {/* SECTION: RESUMO (KPIs) */}
         {tab === 'Resumo' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2">
+            <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="bg-green-500 text-green-400"/>
+            <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido)} subtext="Custo" icon={PiggyBank} colorClass="bg-blue-500 text-blue-400"/>
+            <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "bg-green-500 text-green-400" : "bg-red-500 text-red-400"}/>
             
-            {/* CARD 1: RENDA */}
-            <StatCard 
-                title="Renda Passiva Est." 
-                value={formatMoney(data?.resumo?.RendaMensal)} 
-                subtext="Mensal" 
-                icon={DollarSign} 
-                colorClass="bg-green-500 text-green-400"
-            />
-
-            {/* CARD 2: TOTAL INVESTIDO (NOVO) */}
-            <StatCard 
-                title="Total Investido" 
-                value={formatMoney(data?.resumo?.TotalInvestido)} 
-                subtext="Custo" 
-                icon={PiggyBank} 
-                colorClass="bg-blue-500 text-blue-400"
-            />
-
-            {/* CARD 3: LUCRO TOTAL (NOVO) */}
-            <StatCard 
-                title="Lucro / Prejuízo" 
-                value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} 
-                subtext="Nominal" 
-                icon={BarChart3} 
-                colorClass={lucroTotal >= 0 ? "bg-green-500 text-green-400" : "bg-red-500 text-red-400"}
-            />
-
-            {/* CARD 4: TOP PICK */}
             <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
                <div className="flex justify-between items-start">
                   <div className="p-2 rounded-lg bg-blue-500/20"><TrendingUp size={20} className="text-blue-400"/></div>
@@ -179,20 +163,27 @@ export default function Home() {
           </div>
         )}
 
-        {/* SECTION 2: ALERTAS */}
+        {/* SECTION: EVOLUÇÃO (GRÁFICO NOVO) */}
+        {tab === 'Evolução' && (
+           <div className="animate-in fade-in slide-in-from-bottom-2">
+              <HistoryChart data={history} />
+           </div>
+        )}
+
+        {/* SECTION: ALERTAS */}
         {(tab === 'Resumo' || tab === 'Radar') && (
            <RiskRadar alertas={data?.alertas} />
         )}
 
-        {/* SECTION 3: TABELA */}
-        {tab !== 'Radar' && (
+        {/* SECTION: TABELA (Esconde em Radar e Evolução) */}
+        {tab !== 'Radar' && tab !== 'Evolução' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950/50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
                   <tr>
                     <th className="p-4 pl-6">Ativo</th>
-                    <th className="p-4 text-right">Minha Posição</th> {/* COLUNA NOVA */}
+                    <th className="p-4 text-right">Minha Posição</th>
                     <th className="p-4 text-right hidden sm:table-cell">Preço</th>
                     <th className="p-4 text-right">Resultado</th>
                     <th className="p-4 text-right hidden md:table-cell">Meta</th>
@@ -219,7 +210,7 @@ export default function Home() {
           </div>
         )}
         
-        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v3.4 (Desktop Final)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v3.5 (Evolution Ready)</div>
       </div>
     </main>
   );

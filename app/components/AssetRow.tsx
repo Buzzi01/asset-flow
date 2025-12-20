@@ -1,8 +1,9 @@
 import { Snowflake, TrendingUp, TrendingDown } from 'lucide-react';
-import { formatMoney } from '../utils';
+import { formatMoney, getStatusColor, getStatusBg } from '../utils';
+import { Asset } from '../types'; // Importando o Tipo!
 
 interface AssetRowProps {
-  ativo: any;
+  ativo: Asset; // Adeus 'any'!
   tab: string;
 }
 
@@ -24,7 +25,8 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
       {/* 1. ATIVO */}
       <td className="p-4 pl-6">
         <div className="flex items-center gap-3">
-          <div className={`w-1 h-8 rounded-full opacity-60 group-hover:opacity-100 transition-opacity ${ativo.cor_rec === 'green' ? 'bg-green-500' : ativo.cor_rec === 'blue' ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
+          {/* Usa função de cor baseada no STATUS, não cor hardcoded */}
+          <div className={`w-1 h-8 rounded-full opacity-60 group-hover:opacity-100 transition-opacity ${getStatusBg(ativo.status)}`}></div>
           <div>
             <div className="font-bold text-white text-sm">{ativo.ticker}</div>
             <div className="text-[10px] text-slate-500 uppercase">{ativo.tipo} • {ativo.qtd} un</div>
@@ -81,18 +83,15 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
             </span>
           ) : <span className="text-slate-700 text-[10px]">-</span>}
           
-          {ativo.recomendacao !== 'NEUTRO' && (
-             <span className={`text-[9px] px-1.5 py-0.5 rounded border uppercase ${
-               ativo.cor_rec === 'green' ? 'border-green-500/30 text-green-500' : 
-               ativo.cor_rec === 'blue' ? 'border-blue-500/30 text-blue-400' : 'border-slate-800 text-slate-600'
-             }`}>
+          {ativo.status !== 'MANTER' && ativo.status !== 'NEUTRO' && (
+             <span className={`text-[9px] px-1.5 py-0.5 rounded border uppercase ${getStatusColor(ativo.status)}`}>
                {ativo.recomendacao}
              </span>
           )}
         </div>
       </td>
 
-      {/* 7. INDICADORES (SÓ APARECE SE FOR AÇÃO OU FII) */}
+      {/* 7. INDICADORES */}
       {showIndicators && (
         <td className="p-4 text-center hidden lg:table-cell w-24">
             {tab === 'FII' && magicNumber > 0 ? (
@@ -101,10 +100,10 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
                      {atingiuMagic && <Snowflake size={12}/>} {ativo.qtd}/{magicNumber}
                    </span>
                  </div>
-            ) : tab === 'Ação' && ativo.vi_graham > 0 ? (
+            ) : tab === 'Ação' && (ativo.vi_graham ?? 0) > 0 ? (
                 <div className="font-mono text-xs">
-                  <span className={ativo.mg_graham > 0 ? 'text-green-500' : 'text-red-500'} title="Margem de Graham">
-                    {ativo.mg_graham > 0 ? '+' : ''}{ativo.mg_graham.toFixed(0)}%
+                  <span className={(ativo.mg_graham ?? 0) > 0 ? 'text-green-500' : 'text-red-500'} title="Margem de Graham">
+                    {(ativo.mg_graham ?? 0) > 0 ? '+' : ''}{(ativo.mg_graham ?? 0).toFixed(0)}%
                   </span>
                 </div>
             ) : (
