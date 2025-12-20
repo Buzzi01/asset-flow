@@ -1,4 +1,4 @@
-import { AlertTriangle, TrendingDown, Diamond, Snowflake, Sparkles } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Diamond, Snowflake, Sparkles, Scale } from 'lucide-react';
 
 export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
   if (!alertas || alertas.length === 0) return null;
@@ -12,10 +12,7 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
         <h3 className="font-bold text-slate-200 text-sm">Insights de Oportunidade</h3>
       </div>
       
-      {/* AJUSTE DE ALTURA E SCROLL:
-         1. max-h-[245px]: Reduzi para tentar alinhar o fundo com a tabela ao lado.
-         2. Classes [&::-webkit...]: Barra de rolagem cinza escuro (Theme Dark).
-      */}
+      {/* LISTA COM SCROLL */}
       <div className="divide-y divide-slate-800/50 overflow-y-auto max-h-[245px] 
         [&::-webkit-scrollbar]:w-1.5
         [&::-webkit-scrollbar-track]:bg-slate-950
@@ -53,6 +50,12 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
               Icon = Diamond;
               label = "Valor Patrimonial";
               break;
+            case 'PVP':
+              colorClass = "text-lime-400";
+              bgClass = "bg-lime-500/10";
+              Icon = Scale;
+              label = "Desconto em FIIs";
+              break;
             case 'MAGIC':
               colorClass = "text-cyan-400";
               bgClass = "bg-cyan-500/10";
@@ -63,12 +66,9 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
 
           return (
             <div key={i} className="p-4 flex items-start gap-4 hover:bg-slate-800/30 transition-colors group">
-              {/* Ícone Redondo */}
               <div className={`p-2 rounded-full shrink-0 ${bgClass} ${colorClass}`}>
                 <Icon size={18} />
               </div>
-
-              {/* Texto */}
               <div className="flex flex-col pr-2">
                 <span className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${colorClass} opacity-80`}>
                   {label}

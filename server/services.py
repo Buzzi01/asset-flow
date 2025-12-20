@@ -204,7 +204,13 @@ class PortfolioService:
                 if "mg_graham" in item["metrics"] and item["metrics"]["mg_graham"] > 50:
                      alertas.append(f"GRAHAM:{pos.asset.ticker} está descontada (Potencial de Valor)")
 
-                # 4. Bola de Neve (Ciano): Faltam poucas cotas
+                # 4. P/VP para FIIs (NOVO)
+                if cat_name == "FII" and "p_vp" in item["metrics"]:
+                     pvp = item["metrics"]["p_vp"]
+                     if pvp > 0 and pvp < 0.95: # Desconto de 5% ou mais
+                         alertas.append(f"PVP:{pos.asset.ticker} está barato (P/VP {pvp:.2f})")
+
+                # 5. Bola de Neve (Ciano): Faltam poucas cotas
                 mn = item["metrics"].get("magic_number", 0)
                 if mn > 0 and pos.quantity < mn and (mn - pos.quantity) <= 5:
                      alertas.append(f"MAGIC:{pos.asset.ticker} quase atingindo o Número Mágico (Faltam {int(mn - pos.quantity)})")
@@ -242,15 +248,21 @@ class PortfolioService:
             return { "status": "Sucesso", "dolar": dolar_rate, "resumo": resumo, "grafico": grafico, "alertas": alertas, "ativos": final_list }
 
     def _calculate_metrics(self, pos, preco, min_6m):
-        m = {"vi_graham": 0, "mg_graham": 0, "magic_number": 0, "renda_mensal_est": 0}
+        m = {"vi_graham": 0, "mg_graham": 0, "magic_number": 0, "renda_mensal_est": 0, "p_vp": 0}
         try:
             dy = self._extract_value(pos.manual_dy)
             lpa = self._extract_value(pos.manual_lpa)
             vpa = self._extract_value(pos.manual_vpa)
             qtd = self._extract_value(pos.quantity)
+            
             if dy > 0:
                 m["renda_mensal_est"] = (dy * qtd) / 12
                 if preco > 0: m["magic_number"] = math.ceil(preco / (dy / 12))
+            
+            # Cálculo P/VP (Novo)
+            if vpa > 0 and preco > 0:
+                m["p_vp"] = preco / vpa
+
             if pos.asset.category.name == "Ação" and lpa > 0 and vpa > 0:
                 m["vi_graham"] = math.sqrt(22.5 * lpa * vpa)
                 if preco > 0: m["mg_graham"] = ((m["vi_graham"] - preco) / preco) * 100
@@ -268,6 +280,9 @@ class PortfolioService:
         elif pos.asset.category.name == "FII":
             if metrics["magic_number"] > 0 and pos.quantity >= metrics["magic_number"]: 
                 score += 10; motivo.append("Bola de Neve ❄️")
+            # Score extra para FII barato (Novo)
+            if metrics["p_vp"] > 0 and metrics["p_vp"] < 0.95:
+                score += 20; motivo.append("Desconto Patrimonial")
 
         if falta > 0:
             if score >= 60: status = "COMPRA_FORTE"; rec_text = "COMPRA FORTE"

@@ -51,3 +51,17 @@ export interface DashboardData {
   alertas: string[];
   ativos: Asset[];
 }
+
+export interface Asset {
+  ticker: string;
+  tipo: string;
+  qtd: number;
+  pm: number;
+  // ... outros campos que já existem ...
+  
+  // ADICIONE ESTAS LINHAS AQUI NO FINAL DA LISTA:
+  manual_dy?: number;
+  manual_lpa?: number;
+  manual_vpa?: number;
+  p_vp?: number; // <--- O CAMPO QUE FALTAVA
+}
