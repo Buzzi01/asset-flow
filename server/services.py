@@ -295,3 +295,53 @@ class PortfolioService:
             
             session.commit()
             return {"status": "Sucesso", "msg": "Dados atualizados!"}
+        
+    def add_new_asset(self, ticker, category_name, qtd, pm):
+        """Cria um ativo novo do zero"""
+        print(f"🆕 Criando Ativo: {ticker} ({category_name})")
+        with Session() as session:
+            # 1. Verifica se já existe
+            exists = session.query(Asset).filter_by(ticker=ticker).first()
+            if exists:
+                return {"status": "Erro", "msg": "Ativo já existe!"}
+            
+            # 2. Busca a Categoria
+            category = session.query(Category).filter_by(name=category_name).first()
+            if not category:
+                # Fallback: Tenta criar ou pega a primeira
+                category = session.query(Category).first()
+            
+            # 3. Define Moeda (BRL ou USD)
+            currency = "USD" if category.name in ["Internacional", "Cripto"] else "BRL"
+            
+            # 4. Cria o Ativo
+            new_asset = Asset(ticker=ticker, category_id=category.id, currency=currency)
+            session.add(new_asset)
+            session.flush() # Para gerar o ID
+            
+            # 5. Cria a Posição Inicial
+            pos = Position(asset_id=new_asset.id, quantity=float(qtd), average_price=float(pm))
+            session.add(pos)
+            
+            session.commit()
+            return {"status": "Sucesso", "msg": "Ativo criado!"}
+        
+    def delete_asset(self, ticker):
+        """Exclui completamente um ativo do banco de dados"""
+        print(f"🗑️ Excluindo Ativo: {ticker}")
+        with Session() as session:
+            asset = session.query(Asset).filter_by(ticker=ticker).first()
+            if not asset:
+                return {"status": "Erro", "msg": "Ativo não encontrado"}
+            
+            # 1. Remove Posição (Quantidade/Preço Médio)
+            session.query(Position).filter_by(asset_id=asset.id).delete()
+            
+            # 2. Remove Dados de Mercado (Preços salvos)
+            session.query(MarketData).filter_by(asset_id=asset.id).delete()
+            
+            # 3. Remove o Ativo em si
+            session.delete(asset)
+            
+            session.commit()
+            return {"status": "Sucesso", "msg": f"{ticker} foi excluído para sempre."}

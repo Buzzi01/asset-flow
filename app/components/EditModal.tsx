@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { X, Save, TrendingUp, BarChart } from 'lucide-react';
+import { X, Save, TrendingUp, BarChart, Trash2, AlertTriangle } from 'lucide-react';
 
 interface EditModalProps {
   isOpen: boolean;
@@ -10,28 +10,23 @@ interface EditModalProps {
 }
 
 export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) => {
-  // Estados locais
   const [qtd, setQtd] = useState(0);
   const [pm, setPm] = useState(0);
   const [meta, setMeta] = useState(0);
   
-  // Novos campos fundamentalistas
   const [dy, setDy] = useState(0);
   const [lpa, setLpa] = useState(0);
   const [vpa, setVpa] = useState(0);
 
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false); // Estado para exclusão
 
-  // EFEITO MÁGICO: Quando o 'ativo' muda, atualiza os campos!
   useEffect(() => {
     if (ativo) {
       setQtd(ativo.qtd || 0);
       setPm(ativo.pm || 0);
       setMeta(ativo.meta || 0);
-      // Tenta pegar do objeto metrics ou direto do ativo se vier da API
       setDy(ativo.manual_dy || ativo.renda_mensal_est ? (ativo.renda_mensal_est * 12 / ativo.qtd) : 0); 
-      // Nota: Como o frontend recebe dados processados, às vezes o manual_dy original não vem direto.
-      // Vamos assumir que você vai preencher na mão se estiver zero.
       setLpa(ativo.manual_lpa || 0); 
       setVpa(ativo.manual_vpa || 0);
     }
@@ -45,18 +40,33 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
       await fetch('http://localhost:5328/api/update_asset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            ticker: ativo.ticker, 
-            qtd, pm, meta,
-            dy, lpa, vpa // Enviando os novos dados
-        }),
+        body: JSON.stringify({ ticker: ativo.ticker, qtd, pm, meta, dy, lpa, vpa }),
       });
       setSaving(false);
-      onSave(); 
-      onClose();
+      onSave(); onClose();
     } catch (error) {
       alert("Erro ao salvar");
       setSaving(false);
+    }
+  };
+
+  // NOVA FUNÇÃO: DELETAR
+  const handleDelete = async () => {
+    if (!confirm(`Tem certeza que deseja EXCLUIR ${ativo.ticker}? Essa ação não pode ser desfeita.`)) return;
+
+    setDeleting(true);
+    try {
+      await fetch('http://localhost:5328/api/delete_asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: ativo.ticker }),
+      });
+      setDeleting(false);
+      onSave(); // Recarrega a tela principal
+      onClose(); // Fecha o modal
+    } catch (error) {
+      alert("Erro ao excluir");
+      setDeleting(false);
     }
   };
 
@@ -73,10 +83,9 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
           <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={20}/></button>
         </div>
 
-        {/* Body com Scroll se for pequeno */}
+        {/* Body */}
         <div className="p-6 space-y-6 overflow-y-auto">
           
-          {/* SEÇÃO 1: DADOS DE POSIÇÃO */}
           <div className="space-y-3">
              <h4 className="text-xs font-bold text-blue-400 uppercase flex items-center gap-2">
                 <BarChart size={14}/> Minha Posição
@@ -99,13 +108,10 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
 
           <div className="border-t border-slate-800"></div>
 
-          {/* SEÇÃO 2: DADOS FUNDAMENTALISTAS */}
           <div className="space-y-3">
              <h4 className="text-xs font-bold text-green-400 uppercase flex items-center gap-2">
                 <TrendingUp size={14}/> Indicadores (Opcional)
              </h4>
-             <p className="text-[10px] text-slate-500">Preencha para calcular Graham e Bazin automaticamente.</p>
-             
              <div className="grid grid-cols-3 gap-3">
                 <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">DY Anual (%)</label>
@@ -121,12 +127,23 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
                 </div>
              </div>
           </div>
-
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end shrink-0">
-          <button onClick={handleSave} disabled={saving} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded flex items-center gap-2 text-sm font-bold transition-colors disabled:opacity-50">
+        {/* Footer com DELETE e SALVAR */}
+        <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-between shrink-0">
+          
+          {/* BOTÃO EXCLUIR */}
+          <button 
+             onClick={handleDelete} 
+             disabled={deleting || saving}
+             className="text-red-500 hover:text-red-400 hover:bg-red-500/10 px-3 py-2 rounded flex items-center gap-2 text-xs font-bold transition-colors"
+             title="Excluir Ativo"
+          >
+             {deleting ? '...' : <Trash2 size={16}/>}
+          </button>
+
+          {/* BOTÃO SALVAR */}
+          <button onClick={handleSave} disabled={saving || deleting} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded flex items-center gap-2 text-sm font-bold transition-colors disabled:opacity-50">
             <Save size={16}/> {saving ? 'Salvando...' : 'Salvar Dados'}
           </button>
         </div>

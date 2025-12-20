@@ -87,7 +87,44 @@ def update_asset():
         return jsonify(result)
     except Exception as e:
         print(f"Erro no update: {e}")
-        return jsonify({"status": "Erro", "msg": str(e)}) 
+        return jsonify({"status": "Erro", "msg": str(e)})
+
+@app.route('/api/add_asset', methods=['POST'])
+def add_asset():
+    data = request.json
+    try:
+        ticker = data.get('ticker').upper().strip() # Força Maiúscula
+        category = data.get('category')
+        qtd = data.get('qtd', 0)
+        pm = data.get('pm', 0)
+        
+        result = service.add_new_asset(ticker, category, qtd, pm)
+        
+        if result["status"] == "Sucesso":
+             # Tenta baixar o preço logo de cara para não ficar zerado
+             try:
+                service.update_prices()
+                service.take_daily_snapshot()
+             except: pass
+             
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "Erro", "msg": str(e)})
+    
+@app.route('/api/delete_asset', methods=['POST'])
+def delete_asset():
+    data = request.json
+    try:
+        ticker = data.get('ticker')
+        result = service.delete_asset(ticker)
+        
+        # Se deletou, atualiza o snapshot para o patrimônio total cair na hora
+        if result["status"] == "Sucesso":
+             service.take_daily_snapshot()
+             
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "Erro", "msg": str(e)})
 
 if __name__ == '__main__':
     print("🚀 AssetFlow Server (SQL Edition) Iniciando...")

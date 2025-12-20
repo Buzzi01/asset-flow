@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight 
+  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle 
 } from 'lucide-react';
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
@@ -11,7 +11,8 @@ import { AllocationChart } from './components/AllocationChart';
 import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
-import { EditModal } from './components/EditModal'; // Importando o Modal
+import { EditModal } from './components/EditModal';
+import { AddAssetModal } from './components/AddAssetModal'; // <--- NOVO
 
 export default function Home() {
   const [data, setData] = useState<any>(null);
@@ -20,7 +21,8 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('Resumo');
-  const [editingAsset, setEditingAsset] = useState<any>(null); // Estado para controlar o modal
+  const [editingAsset, setEditingAsset] = useState<any>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false); // <--- ESTADO DO MODAL NOVO
 
   const fetchData = (force = false) => {
     if (force) setRefreshing(true);
@@ -103,7 +105,15 @@ export default function Home() {
             <h1 className="text-lg font-bold text-white tracking-tight">AssetFlow <span className="text-blue-500 text-xs font-normal ml-1">Pro</span></h1>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+             {/* BOTÃO NOVO ATIVO */}
+             <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20"
+             >
+                <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
+             </button>
+
              <button 
                 onClick={() => fetchData(true)} 
                 disabled={refreshing}
@@ -138,18 +148,16 @@ export default function Home() {
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         
         {/* ==================================================================================== */}
-        {/* DASHBOARD EXECUTIVO (Resumo Limpo) */}
+        {/* DASHBOARD EXECUTIVO */}
         {/* ==================================================================================== */}
         {tab === 'Resumo' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* 1. LINHA SUPERIOR: KPIs (Cards Limpos) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
               <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
               <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}/>
               
-              {/* Card de Melhor Aporte (Estilo KPI) */}
               <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
                  <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                     <Target size={40} className="text-blue-400" />
@@ -176,19 +184,13 @@ export default function Home() {
               </div>
             </div>
 
-            {/* 2. LINHA CENTRAL: VISÃO GERAL (Tabela + Pizza) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-               
-               {/* Coluna Esquerda (Menor): Alocação (Pizza) */}
                <div className="flex flex-col h-full">
                   <AllocationChart data={data?.grafico} />
-                  {/* Se houver alertas, eles aparecem aqui, discretos, embaixo do gráfico */}
                   <div className="mt-4">
                       <RiskRadar alertas={data?.alertas} />
                   </div>
                </div>
-
-               {/* Coluna Direita (Maior): Tabela Consolidada */}
                <div className="lg:col-span-2 flex flex-col h-full">
                    <CategorySummary ativos={data?.ativos} />
                </div>
@@ -197,9 +199,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ==================================================================================== */}
-        {/* OUTRAS ABAS (EVOLUÇÃO, RADAR, ETC) */}
-        {/* ==================================================================================== */}
+        {/* OUTRAS ABAS */}
         {tab === 'Evolução' && (
            <div className="animate-in fade-in slide-in-from-bottom-2 h-[500px]">
               <HistoryChart data={history} />
@@ -235,7 +235,7 @@ export default function Home() {
                         key={ativo.ticker} 
                         ativo={ativo} 
                         tab={tab} 
-                        onEdit={(a) => setEditingAsset(a)} // Passando a função de abrir o Modal
+                        onEdit={(a) => setEditingAsset(a)}
                       />
                     ))
                   ) : (
@@ -249,15 +249,22 @@ export default function Home() {
           </div>
         )}
         
-        {/* MODAL DE EDIÇÃO (Fica escondido até setEditingAsset ter valor) */}
+        {/* MODAL DE EDIÇÃO */}
         <EditModal 
            isOpen={!!editingAsset} 
            onClose={() => setEditingAsset(null)} 
            onSave={() => fetchData(true)} 
            ativo={editingAsset} 
         />
+
+        {/* MODAL DE NOVO ATIVO */}
+        <AddAssetModal 
+            isOpen={isAddModalOpen} 
+            onClose={() => setIsAddModalOpen(false)} 
+            onSuccess={() => fetchData(true)}
+        />
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v6.1 (Editable)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.0 (Creation Suite)</div>
       </div>
     </main>
   );
