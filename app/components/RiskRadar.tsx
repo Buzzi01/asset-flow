@@ -13,7 +13,7 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
       </div>
       
       {/* AJUSTE DE ALTURA E SCROLL:
-         1. max-h-[340px]: Reduzi para tentar alinhar o fundo com a tabela ao lado.
+         1. max-h-[245px]: Reduzi para tentar alinhar o fundo com a tabela ao lado.
          2. Classes [&::-webkit...]: Barra de rolagem cinza escuro (Theme Dark).
       */}
       <div className="divide-y divide-slate-800/50 overflow-y-auto max-h-[245px] 

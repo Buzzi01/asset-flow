@@ -268,3 +268,30 @@ class PortfolioService:
                     "Lucro": s.profit
                 })
             return history
+        
+        # ... (métodos anteriores) ...
+
+    def update_position(self, ticker, qtd, pm, meta, dy=0, lpa=0, vpa=0):
+        """Atualiza posição + indicadores fundamentalistas"""
+        print(f"📝 Atualizando {ticker} | Qtd:{qtd} PM:{pm} Meta:{meta}% | DY:{dy} LPA:{lpa} VPA:{vpa}")
+        with Session() as session:
+            asset = session.query(Asset).filter_by(ticker=ticker).first()
+            if not asset: return {"status": "Erro", "msg": "Ativo não encontrado"}
+            
+            pos = session.query(Position).filter_by(asset_id=asset.id).first()
+            if not pos:
+                pos = Position(asset_id=asset.id)
+                session.add(pos)
+            
+            # Dados de Posição
+            pos.quantity = float(qtd)
+            pos.average_price = float(pm)
+            pos.target_percent = float(meta)
+            
+            # Dados Fundamentalistas (Manuais)
+            pos.manual_dy = float(dy)
+            pos.manual_lpa = float(lpa)
+            pos.manual_vpa = float(vpa)
+            
+            session.commit()
+            return {"status": "Sucesso", "msg": "Dados atualizados!"}

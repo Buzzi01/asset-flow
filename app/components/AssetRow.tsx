@@ -1,15 +1,16 @@
 'use client';
 import { useState } from 'react';
-import { Snowflake, TrendingUp, TrendingDown } from 'lucide-react';
+import { Snowflake, TrendingUp, TrendingDown, Pencil } from 'lucide-react'; // Adicionado Pencil
 import { formatMoney, getStatusColor, getStatusBg } from '../utils';
 import { Asset } from '../types';
 
 interface AssetRowProps {
   ativo: Asset;
   tab: string;
+  onEdit: (ativo: Asset) => void; // Adicionada a prop onEdit
 }
 
-export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
+export const AssetRow = ({ ativo, tab, onEdit }: AssetRowProps) => {
   const percentualDaMeta = ativo.meta > 0 ? (ativo.pct_na_categoria / ativo.meta) * 100 : 0;
   const barraWidth = Math.min(percentualDaMeta, 100);
   const isOverweight = ativo.pct_na_categoria > ativo.meta;
@@ -30,7 +31,7 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
       <td className="p-4 pl-6">
         <div className="flex items-center gap-3">
           
-          {/* Lógica Visual Ajustada: Sem borda branca dura */}
+          {/* Logo */}
           {!imgError ? (
              <div className="w-9 h-9 rounded-full bg-white/5 p-1 overflow-hidden shrink-0 border border-white/10">
                <img 
@@ -41,20 +42,30 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
                />
              </div>
           ) : (
-             // Fallback: Bolinha colorida (Mantido igual)
              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-lg ${getStatusBg(ativo.status)}`}>
                {ativo.ticker.substring(0, 2)}
              </div>
           )}
 
           <div>
-            <div className="font-bold text-white text-sm">{ativo.ticker}</div>
+            {/* Nome do Ativo + Botão de Editar */}
+            <div className="font-bold text-white text-sm flex items-center gap-2">
+                {ativo.ticker}
+                
+                {/* BOTÃO LÁPIS (Só aparece no hover) */}
+                <button 
+                  onClick={() => onEdit(ativo)}
+                  className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-all cursor-pointer"
+                  title="Editar Posição"
+                >
+                  <Pencil size={12} />
+                </button>
+            </div>
+            
             <div className="text-[10px] text-slate-500 uppercase">{ativo.tipo} • {ativo.qtd} un</div>
           </div>
         </div>
       </td>
-
-      {/* ... (RESTO DO CÓDIGO PERMANECE IGUAL) ... */}
 
       {/* 2. MINHA POSIÇÃO */}
       <td className="p-4 text-right">

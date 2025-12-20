@@ -11,6 +11,7 @@ import { AllocationChart } from './components/AllocationChart';
 import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
+import { EditModal } from './components/EditModal'; // Importando o Modal
 
 export default function Home() {
   const [data, setData] = useState<any>(null);
@@ -19,6 +20,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState('Resumo');
+  const [editingAsset, setEditingAsset] = useState<any>(null); // Estado para controlar o modal
 
   const fetchData = (force = false) => {
     if (force) setRefreshing(true);
@@ -229,7 +231,12 @@ export default function Home() {
                 <tbody className="divide-y divide-slate-800/50">
                   {filteredAssets.length > 0 ? (
                     filteredAssets.map((ativo: any) => (
-                      <AssetRow key={ativo.ticker} ativo={ativo} tab={tab} />
+                      <AssetRow 
+                        key={ativo.ticker} 
+                        ativo={ativo} 
+                        tab={tab} 
+                        onEdit={(a) => setEditingAsset(a)} // Passando a função de abrir o Modal
+                      />
                     ))
                   ) : (
                     <tr>
@@ -242,7 +249,15 @@ export default function Home() {
           </div>
         )}
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v6.0 (Clean Design)</div>
+        {/* MODAL DE EDIÇÃO (Fica escondido até setEditingAsset ter valor) */}
+        <EditModal 
+           isOpen={!!editingAsset} 
+           onClose={() => setEditingAsset(null)} 
+           onSave={() => fetchData(true)} 
+           ativo={editingAsset} 
+        />
+        
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v6.1 (Editable)</div>
       </div>
     </main>
   );

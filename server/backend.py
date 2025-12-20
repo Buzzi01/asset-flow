@@ -65,6 +65,30 @@ def initial_background_update():
     except Exception as e:
         print(f"⚠️ Erro na atualização inicial: {e}")
 
+@app.route('/api/update_asset', methods=['POST'])
+def update_asset():
+    data = request.json
+    try:
+        # Extrai tudo do JSON
+        ticker = data.get('ticker')
+        qtd = data.get('qtd', 0)
+        pm = data.get('pm', 0)
+        meta = data.get('meta', 0)
+        dy = data.get('dy', 0)
+        lpa = data.get('lpa', 0)
+        vpa = data.get('vpa', 0)
+        
+        # Passa tudo para o service
+        result = service.update_position(ticker, qtd, pm, meta, dy, lpa, vpa)
+        
+        if result["status"] == "Sucesso":
+             service.take_daily_snapshot() 
+             
+        return jsonify(result)
+    except Exception as e:
+        print(f"Erro no update: {e}")
+        return jsonify({"status": "Erro", "msg": str(e)}) 
+
 if __name__ == '__main__':
     print("🚀 AssetFlow Server (SQL Edition) Iniciando...")
     
