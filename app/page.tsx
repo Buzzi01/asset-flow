@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart 
+  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight 
 } from 'lucide-react';
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
@@ -10,10 +10,11 @@ import { AssetRow } from './components/AssetRow';
 import { AllocationChart } from './components/AllocationChart';
 import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
+import { CategorySummary } from './components/CategorySummary';
 
 export default function Home() {
   const [data, setData] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]); // Estado para o histórico
+  const [history, setHistory] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,6 @@ export default function Home() {
     setError(null);
     const url = force ? '/api/index?force=true' : '/api/index';
 
-    // 1. Busca Dados Principais
     fetch(url)
       .then(async (res) => {
         if (!res.ok) {
@@ -48,7 +48,6 @@ export default function Home() {
         setRefreshing(false);
       });
 
-    // 2. Busca Histórico (Em paralelo)
     fetch('/api/history')
       .then(res => res.json())
       .then(h => setHistory(h))
@@ -59,7 +58,7 @@ export default function Home() {
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
-    { id: 'Evolução', icon: <LineChart size={16} /> }, // Nova Aba
+    { id: 'Evolução', icon: <LineChart size={16} /> },
     { id: 'Ação', icon: <TrendingUp size={16} /> },
     { id: 'FII', icon: <Activity size={16} /> },
     { id: 'Internacional', icon: <DollarSign size={16} /> },
@@ -69,7 +68,7 @@ export default function Home() {
     { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
   ];
 
-  const filteredAssets = data?.ativos?.filter((a: any) => tab === 'Resumo' || tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
+  const filteredAssets = data?.ativos?.filter((a: any) => tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
   const topCompras = data?.ativos?.filter((a: any) => a.falta_comprar > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
 
@@ -134,50 +133,84 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
+      <div className="max-w-7xl mx-auto p-4 md:p-6">
         
-        {/* SECTION: RESUMO (KPIs) */}
+        {/* ==================================================================================== */}
+        {/* DASHBOARD EXECUTIVO (Resumo Limpo) */}
+        {/* ==================================================================================== */}
         {tab === 'Resumo' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-2">
-            <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="bg-green-500 text-green-400"/>
-            <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido)} subtext="Custo" icon={PiggyBank} colorClass="bg-blue-500 text-blue-400"/>
-            <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "bg-green-500 text-green-400" : "bg-red-500 text-red-400"}/>
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
-            <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full">
-               <div className="flex justify-between items-start">
-                  <div className="p-2 rounded-lg bg-blue-500/20"><TrendingUp size={20} className="text-blue-400"/></div>
-                  <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full border border-blue-500/20">Top Pick</span>
-               </div>
-               <div>
-                  <p className="text-slate-400 text-[10px] uppercase font-bold mb-1">Melhor Aporte</p>
-                  {topCompras.length > 0 ? (
-                    <div>
-                       <h3 className="text-xl font-bold text-white">{topCompras[0].ticker}</h3>
-                       <p className="text-xs text-green-400">+{formatMoney(topCompras[0].falta_comprar)}</p>
+            {/* 1. LINHA SUPERIOR: KPIs (Cards Limpos) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
+              <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
+              <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}/>
+              
+              {/* Card de Melhor Aporte (Estilo KPI) */}
+              <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
+                 <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Target size={40} className="text-blue-400" />
+                 </div>
+                 <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
+                        <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
                     </div>
-                  ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
-               </div>
+                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                         <TrendingUp size={20} className="text-blue-400"/>
+                    </div>
+                 </div>
+                 <div>
+                    {topCompras.length > 0 ? (
+                      <div className="flex items-end gap-2">
+                         <h3 className="text-2xl font-bold text-white tracking-tight">{topCompras[0].ticker}</h3>
+                         <span className="text-xs text-green-400 mb-1.5 font-bold flex items-center">
+                            <ArrowUpRight size={12}/> {topCompras[0].recomendacao}
+                         </span>
+                      </div>
+                    ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
+                 </div>
+              </div>
             </div>
 
-            <AllocationChart data={data?.grafico} />
+            {/* 2. LINHA CENTRAL: VISÃO GERAL (Tabela + Pizza) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+               
+               {/* Coluna Esquerda (Menor): Alocação (Pizza) */}
+               <div className="flex flex-col h-full">
+                  <AllocationChart data={data?.grafico} />
+                  {/* Se houver alertas, eles aparecem aqui, discretos, embaixo do gráfico */}
+                  <div className="mt-4">
+                      <RiskRadar alertas={data?.alertas} />
+                  </div>
+               </div>
+
+               {/* Coluna Direita (Maior): Tabela Consolidada */}
+               <div className="lg:col-span-2 flex flex-col h-full">
+                   <CategorySummary ativos={data?.ativos} />
+               </div>
+            </div>
+            
           </div>
         )}
 
-        {/* SECTION: EVOLUÇÃO (GRÁFICO NOVO) */}
+        {/* ==================================================================================== */}
+        {/* OUTRAS ABAS (EVOLUÇÃO, RADAR, ETC) */}
+        {/* ==================================================================================== */}
         {tab === 'Evolução' && (
-           <div className="animate-in fade-in slide-in-from-bottom-2">
+           <div className="animate-in fade-in slide-in-from-bottom-2 h-[500px]">
               <HistoryChart data={history} />
            </div>
         )}
 
-        {/* SECTION: ALERTAS */}
-        {(tab === 'Resumo' || tab === 'Radar') && (
+        {(tab === 'Radar') && (
            <RiskRadar alertas={data?.alertas} />
         )}
 
-        {/* SECTION: TABELA (Esconde em Radar e Evolução) */}
-        {tab !== 'Radar' && tab !== 'Evolução' && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4">
+        {/* TABELA DE ATIVOS */}
+        {tab !== 'Resumo' && tab !== 'Radar' && tab !== 'Evolução' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950/50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
@@ -188,7 +221,6 @@ export default function Home() {
                     <th className="p-4 text-right">Resultado</th>
                     <th className="p-4 text-right hidden md:table-cell">Meta</th>
                     <th className="p-4 text-right">Aporte</th>
-                    {/* SÓ MOSTRA SE FOR AÇÃO OU FII */}
                     {(tab === 'Ação' || tab === 'FII') && (
                         <th className="p-4 text-center hidden lg:table-cell w-24">Indicadores</th>
                     )}
@@ -210,7 +242,7 @@ export default function Home() {
           </div>
         )}
         
-        <div className="text-center text-[10px] text-slate-600 mt-8">AssetFlow v3.5 (Evolution Ready)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v6.0 (Clean Design)</div>
       </div>
     </main>
   );

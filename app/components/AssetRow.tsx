@@ -1,9 +1,11 @@
+'use client';
+import { useState } from 'react';
 import { Snowflake, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatMoney, getStatusColor, getStatusBg } from '../utils';
-import { Asset } from '../types'; // Importando o Tipo!
+import { Asset } from '../types';
 
 interface AssetRowProps {
-  ativo: Asset; // Adeus 'any'!
+  ativo: Asset;
   tab: string;
 }
 
@@ -16,23 +18,43 @@ export const AssetRow = ({ ativo, tab }: AssetRowProps) => {
   const atingiuMagic = magicNumber > 0 && ativo.qtd >= magicNumber;
   const lucroPositivo = ativo.lucro_valor >= 0;
 
-  // Condição para mostrar a coluna extra
   const showIndicators = tab === 'Ação' || tab === 'FII';
+
+  const [imgError, setImgError] = useState(false);
+  const logoUrl = `https://raw.githubusercontent.com/thefintz/icones-b3/main/icones/${ativo.ticker}.png`;
 
   return (
     <tr className="hover:bg-slate-800/40 transition-colors border-b border-slate-800/50 last:border-0 group text-xs sm:text-sm">
       
-      {/* 1. ATIVO */}
+      {/* 1. ATIVO + LOGO */}
       <td className="p-4 pl-6">
         <div className="flex items-center gap-3">
-          {/* Usa função de cor baseada no STATUS, não cor hardcoded */}
-          <div className={`w-1 h-8 rounded-full opacity-60 group-hover:opacity-100 transition-opacity ${getStatusBg(ativo.status)}`}></div>
+          
+          {/* Lógica Visual Ajustada: Sem borda branca dura */}
+          {!imgError ? (
+             <div className="w-9 h-9 rounded-full bg-white/5 p-1 overflow-hidden shrink-0 border border-white/10">
+               <img 
+                 src={logoUrl} 
+                 alt={ativo.ticker} 
+                 className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity"
+                 onError={() => setImgError(true)} 
+               />
+             </div>
+          ) : (
+             // Fallback: Bolinha colorida (Mantido igual)
+             <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-lg ${getStatusBg(ativo.status)}`}>
+               {ativo.ticker.substring(0, 2)}
+             </div>
+          )}
+
           <div>
             <div className="font-bold text-white text-sm">{ativo.ticker}</div>
             <div className="text-[10px] text-slate-500 uppercase">{ativo.tipo} • {ativo.qtd} un</div>
           </div>
         </div>
       </td>
+
+      {/* ... (RESTO DO CÓDIGO PERMANECE IGUAL) ... */}
 
       {/* 2. MINHA POSIÇÃO */}
       <td className="p-4 text-right">
