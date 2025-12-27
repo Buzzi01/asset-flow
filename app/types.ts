@@ -5,6 +5,7 @@ export interface AssetMetrics {
   mg_graham: number;
   magic_number: number;
   renda_mensal_est: number;
+  p_vp?: number; // Preço sobre Valor Patrimonial
 }
 
 export interface Asset {
@@ -25,16 +26,22 @@ export interface Asset {
   falta_comprar: number;
   
   // Estratégia
-  recomendacao: string; // Texto legível (Ex: Compra Forte)
-  status: 'COMPRA_FORTE' | 'COMPRAR' | 'AGUARDAR' | 'MANTER' | 'NEUTRO'; // Código lógico
+  recomendacao: string;
+  status: 'COMPRA_FORTE' | 'COMPRAR' | 'AGUARDAR' | 'MANTER' | 'NEUTRO';
   score: number;
   motivo: string;
   
-  // Métricas Opcionais (spread do metrics)
+  // Campos Manuais e Métricas
+  manual_dy?: number;
+  manual_lpa?: number;
+  manual_vpa?: number;
+  
+  // Métricas dinâmicas (propriedades espalhadas do backend)
   vi_graham?: number;
   mg_graham?: number;
   magic_number?: number;
   renda_mensal_est?: number;
+  p_vp?: number;
 }
 
 export interface DashboardData {
@@ -50,18 +57,4 @@ export interface DashboardData {
   grafico: { name: string; value: number }[];
   alertas: string[];
   ativos: Asset[];
-}
-
-export interface Asset {
-  ticker: string;
-  tipo: string;
-  qtd: number;
-  pm: number;
-  // ... outros campos que já existem ...
-  
-  // ADICIONE ESTAS LINHAS AQUI NO FINAL DA LISTA:
-  manual_dy?: number;
-  manual_lpa?: number;
-  manual_vpa?: number;
-  p_vp?: number; // <--- O CAMPO QUE FALTAVA
 }

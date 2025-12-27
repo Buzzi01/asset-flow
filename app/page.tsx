@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
   Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle 
@@ -12,53 +12,16 @@ import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
-import { AddAssetModal } from './components/AddAssetModal'; // <--- NOVO
+import { AddAssetModal } from './components/AddAssetModal';
+import { useAssetData } from './hooks/useAssetData'; // <--- Importando o Hook
 
 export default function Home() {
-  const [data, setData] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]); 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Lógica separada no hook
+  const { data, history, loading, refreshing, error, refetch } = useAssetData();
+  
   const [tab, setTab] = useState('Resumo');
   const [editingAsset, setEditingAsset] = useState<any>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false); // <--- ESTADO DO MODAL NOVO
-
-  const fetchData = (force = false) => {
-    if (force) setRefreshing(true);
-    else setLoading(true);
-    
-    setError(null);
-    const url = force ? '/api/index?force=true' : '/api/index';
-
-    fetch(url)
-      .then(async (res) => {
-        if (!res.ok) {
-           const text = await res.text();
-           throw new Error(`Erro API: ${res.status} - ${text.substring(0, 50)}...`);
-        }
-        return res.json();
-      })
-      .then(d => {
-        if(d.status === 'Erro') throw new Error(d.detalhe);
-        setData(d);
-        setLoading(false);
-        setRefreshing(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setError("Erro de conexão. Verifique o terminal preto.");
-        setLoading(false);
-        setRefreshing(false);
-      });
-
-    fetch('/api/history')
-      .then(res => res.json())
-      .then(h => setHistory(h))
-      .catch(console.error);
-  };
-
-  useEffect(() => { fetchData(); }, []);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
@@ -72,8 +35,8 @@ export default function Home() {
     { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
   ];
 
-  const filteredAssets = data?.ativos?.filter((a: any) => tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
-  const topCompras = data?.ativos?.filter((a: any) => a.falta_comprar > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 3) || [];
+  const filteredAssets = data?.ativos?.filter((a) => tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
+  const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
 
   if (loading) return (
@@ -88,7 +51,7 @@ export default function Home() {
       <AlertTriangle size={48} />
       <h2 className="text-xl font-bold">Ocorreu um erro</h2>
       <p className="text-sm text-slate-500 max-w-md">{error}</p>
-      <button onClick={() => fetchData(true)} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors">
+      <button onClick={() => refetch(true)} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors">
         <RefreshCw size={16} /> Tentar Novamente
       </button>
     </div>
@@ -106,7 +69,6 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-             {/* BOTÃO NOVO ATIVO */}
              <button 
                 onClick={() => setIsAddModalOpen(true)}
                 className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20"
@@ -115,7 +77,7 @@ export default function Home() {
              </button>
 
              <button 
-                onClick={() => fetchData(true)} 
+                onClick={() => refetch(true)} 
                 disabled={refreshing}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50"
                 title="Forçar atualização"
@@ -147,15 +109,12 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         
-        {/* ==================================================================================== */}
-        {/* DASHBOARD EXECUTIVO */}
-        {/* ==================================================================================== */}
         {tab === 'Resumo' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
-              <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
+              <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal || 0)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
+              <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido || 0)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
               <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}/>
               
               <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
@@ -186,20 +145,19 @@ export default function Home() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                <div className="flex flex-col h-full">
-                  <AllocationChart data={data?.grafico} />
+                  <AllocationChart data={data?.grafico || []} />
                   <div className="mt-4">
-                      <RiskRadar alertas={data?.alertas} />
+                      <RiskRadar alertas={data?.alertas || []} />
                   </div>
                </div>
                <div className="lg:col-span-2 flex flex-col h-full">
-                   <CategorySummary ativos={data?.ativos} />
+                   <CategorySummary ativos={data?.ativos || []} />
                </div>
             </div>
             
           </div>
         )}
 
-        {/* OUTRAS ABAS */}
         {tab === 'Evolução' && (
            <div className="animate-in fade-in slide-in-from-bottom-2 h-[500px]">
               <HistoryChart data={history} />
@@ -207,10 +165,9 @@ export default function Home() {
         )}
 
         {(tab === 'Radar') && (
-           <RiskRadar alertas={data?.alertas} />
+           <RiskRadar alertas={data?.alertas || []} />
         )}
 
-        {/* TABELA DE ATIVOS */}
         {tab !== 'Resumo' && tab !== 'Radar' && tab !== 'Evolução' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
             <div className="overflow-x-auto">
@@ -230,7 +187,7 @@ export default function Home() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {filteredAssets.length > 0 ? (
-                    filteredAssets.map((ativo: any) => (
+                    filteredAssets.map((ativo) => (
                       <AssetRow 
                         key={ativo.ticker} 
                         ativo={ativo} 
@@ -249,22 +206,20 @@ export default function Home() {
           </div>
         )}
         
-        {/* MODAL DE EDIÇÃO */}
         <EditModal 
            isOpen={!!editingAsset} 
            onClose={() => setEditingAsset(null)} 
-           onSave={() => fetchData(true)} 
+           onSave={() => refetch(true)} 
            ativo={editingAsset} 
         />
 
-        {/* MODAL DE NOVO ATIVO */}
         <AddAssetModal 
             isOpen={isAddModalOpen} 
             onClose={() => setIsAddModalOpen(false)} 
-            onSuccess={() => fetchData(true)}
+            onSuccess={() => refetch(true)}
         />
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.0 (Creation Suite)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.1 (Optimized)</div>
       </div>
     </main>
   );
