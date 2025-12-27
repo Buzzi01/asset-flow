@@ -8,9 +8,11 @@ from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 
-# Importa as rotas novas
+# Importa as rotas
 from routes.dashboard import dashboard_bp
 from routes.assets import assets_bp
+from routes.news import news_bp  # <--- [NOVO] Importando o arquivo news.py
+
 from services import PortfolioService
 
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +24,7 @@ CORS(app)
 # Registra os Blueprints
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(assets_bp)
+app.register_blueprint(news_bp)  # <--- [NOVO] Ativando a rota de notícias
 
 # Instância local apenas para o Scheduler
 service = PortfolioService()

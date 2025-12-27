@@ -416,93 +416,149 @@ class PortfolioService:
 
     def run_monte_carlo_simulation(self, days=252, simulations=1000):
         """
-        Simula 1000 cenários possíveis para o portfólio no próximo ano (252 dias úteis).
-        Retorna: Dados para plotar o "Cone de Incerteza".
+        Simula 1000 cenários possíveis. Versão DEBUG BLINDADA.
         """
-        print("🎲 Rodando Monte Carlo...")
+        print("🎲 --- INICIANDO MONTE CARLO DEBUG ---")
+        import numpy as np
+        import pandas as pd
+        import yfinance as yf
+        import traceback # Para ver o erro real
+
         session = Session()
         try:
-            # 1. Pegar ativos que compõem a carteira (Ações/FIIs/ETF)
+            # PASSO 1: ATIVOS
+            print("📍 Passo 1: Carregando posições...")
             positions = session.query(Position).all()
             tickers = []
             weights = []
-            total_value = 0
+            total_value = 0.0
             
-            # Calcular pesos atuais
             for pos in positions:
-                # Ignora Renda Fixa/Caixa para simplificar a volatilidade (assume constante)
                 if pos.asset.category.name in ['Ação', 'FII', 'ETF', 'Internacional']:
-                    # Tenta pegar preço atual, senão usa PM
-                    mdata = pos.asset.market_data[0] if pos.asset.market_data else None
-                    price = float(mdata.price) if (mdata and mdata.price) else float(pos.average_price)
-                    val = float(pos.quantity) * price
+                    # Prioridade: Preço Atual > Preço Médio
+                    price = 0.0
+                    if pos.asset.market_data and len(pos.asset.market_data) > 0:
+                        # Garante que é float
+                        price = float(pos.asset.market_data[0].price or 0.0)
+                    
+                    if price == 0:
+                        price = float(pos.average_price or 0.0)
+
+                    qty = float(pos.quantity)
+                    val = qty * price
+                    
                     if val > 0:
-                        tickers.append(pos.asset.ticker + (".SA" if pos.asset.category.name != 'Internacional' else ""))
+                        suffix = ".SA" if pos.asset.category.name != 'Internacional' else ""
+                        clean_ticker = pos.asset.ticker.strip() + suffix
+                        tickers.append(clean_ticker)
                         weights.append(val)
                         total_value += val
             
+            print(f"   Ativos encontrados: {len(tickers)} | Valor Total: {total_value}")
+
             if not tickers or total_value == 0:
-                return {"status": "Erro", "msg": "Sem dados suficientes para simulação"}
+                print("❌ Erro: Sem ativos ou valor total zero.")
+                return {"status": "Erro", "msg": "Carteira vazia ou sem valor."}
 
             # Normalizar pesos
-            weights = [w / total_value for w in weights]
-            weights = np.array(weights)
+            weights = np.array([w / total_value for w in weights])
 
-            # 2. Baixar histórico longo (1 ano) para calcular covariância
-            data = yf.download(tickers, period="1y", group_by='ticker', progress=False)
+            # PASSO 2: DADOS HISTÓRICOS
+            print("📍 Passo 2: Baixando dados do Yahoo Finance...")
+            # auto_adjust=True resolve o warning do log
+            data = yf.download(tickers, period="1y", group_by='ticker', progress=False, auto_adjust=True)
             
-            # Tratar estrutura do DF do yfinance
+            close_prices = pd.DataFrame()
+
+            # Lógica robusta para extrair apenas o 'Close'
             if len(tickers) == 1:
-                close_prices = data['Close'].to_frame()
-                close_prices.columns = tickers
+                t = tickers[0]
+                # Se for 1 ativo, o yfinance retorna DataFrame direto ou Series
+                if isinstance(data, pd.DataFrame) and 'Close' in data.columns:
+                    close_prices[t] = data['Close']
+                else:
+                    close_prices[t] = data # Tenta pegar direto
             else:
-                close_prices = pd.DataFrame()
+                # Múltiplos ativos
                 for t in tickers:
                     try:
-                        close_prices[t] = data[t]['Close']
-                    except: pass # Se falhar um, ignora
-            
+                        if t in data.columns:
+                            series = data[t]['Close']
+                            close_prices[t] = series
+                        elif 'Close' in data.columns and t in data['Close'].columns:
+                            close_prices[t] = data['Close'][t]
+                    except Exception as e:
+                        print(f"⚠️ Aviso: Não consegui ler dados de {t}. Erro: {e}")
+
+            # Limpeza de dados
             close_prices = close_prices.dropna()
             
-            # 3. Calcular Retornos Diários e Estatísticas (A Física da coisa!)
-            returns = close_prices.pct_change()
+            if close_prices.empty:
+                print("❌ Erro: DataFrame de preços vazio após limpeza.")
+                return {"status": "Erro", "msg": "Dados insuficientes do Yahoo Finance."}
+
+            # PASSO 3: ESTATÍSTICAS
+            print("📍 Passo 3: Calculando Matriz de Covariância...")
+            returns = close_prices.pct_change().dropna()
             mean_returns = returns.mean()
             cov_matrix = returns.cov()
             
-            # Retorno e Volatilidade esperada do PORTFÓLIO
-            port_return = np.sum(mean_returns * weights) * days
-            port_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(days)
+            # Precisamos alinhar os pesos com os ativos que REALMENTE baixaram dados
+            valid_tickers = close_prices.columns.tolist()
+            valid_weights = []
             
-            # 4. A Simulação (Movimento Browniano Geométrico)
-            # S_t = S_0 * exp((mu - 0.5 * sigma^2)*t + sigma * W_t)
-            simulation_df = pd.DataFrame()
+            # Recalcula pesos apenas para ativos válidos
+            temp_total = 0
+            ticker_map = dict(zip(tickers, weights)) # Mapa original
             
+            for t in valid_tickers:
+                w = ticker_map.get(t, 0)
+                valid_weights.append(w)
+                temp_total += w
+            
+            # Normaliza de novo para somar 1 (100%)
+            if temp_total == 0: temp_total = 1
+            valid_weights = np.array([w/temp_total for w in valid_weights])
+
+            port_return = np.sum(mean_returns * valid_weights) * days
+            port_volatility = np.sqrt(np.dot(valid_weights.T, np.dot(cov_matrix, valid_weights))) * np.sqrt(days)
+
+            print(f"   Volatilidade Calculada: {port_volatility:.4f}")
+
+            # PASSO 4: SIMULAÇÃO (OTIMIZADA)
+            print("📍 Passo 4: Rodando loops da simulação...")
+            simulation_data = {}
             last_price = total_value
+            daily_vol = port_volatility / np.sqrt(days)
+            daily_ret = port_return / days
             
             for x in range(simulations):
-                # Gera série de choques aleatórios (Ruído Gaussiano)
-                price_series = []
-                price = last_price
-                # Simulação vetorizada é mais rápida, mas fazendo loop simples para clareza:
-                daily_vol = port_volatility / np.sqrt(days)
-                daily_ret = port_return / days
-                
-                # Gerar 'days' dias aleatórios
                 random_shocks = np.random.normal(daily_ret, daily_vol, days)
-                
-                # Caminho acumulado
                 price_path = last_price * (1 + random_shocks).cumprod()
-                
-                # Salvamos apenas percentis para enviar ao front (não enviar 1000 linhas)
-                simulation_df[x] = price_path
+                simulation_data[x] = price_path
 
-            # Pegar percentis (Pior caso, Médio, Melhor caso)
+            simulation_df = pd.DataFrame(simulation_data)
+
+            # PASSO 5: PREPARAÇÃO JSON
+            print("📍 Passo 5: Formatando saída...")
+            
+            # .tolist() é CRUCIAL para o Flask conseguir ler (numpy array quebra o Flask)
+            pior = simulation_df.quantile(0.05, axis=1).tolist()
+            medio = simulation_df.mean(axis=1).tolist()
+            melhor = simulation_df.quantile(0.95, axis=1).tolist()
+            
+            # Verifica se tem NaN ou Infinito (quebra o JSON)
+            if np.isnan(pior).any() or np.isnan(medio).any():
+                print("❌ Erro: Resultados contêm NaN (Not a Number)")
+                return {"status": "Erro", "msg": "Erro matemático na simulação."}
+
             results = {
-                "pior_caso": simulation_df.quantile(0.05, axis=1).tolist(), # 5% probabilidade
-                "medio": simulation_df.mean(axis=1).tolist(),
-                "melhor_caso": simulation_df.quantile(0.95, axis=1).tolist() # 95% probabilidade
+                "pior_caso": pior,
+                "medio": medio,
+                "melhor_caso": melhor
             }
             
+            print("✅ SUCESSO: Simulação finalizada.")
             return {
                 "status": "Sucesso", 
                 "volatilidade_anual": f"{port_volatility*100:.2f}%",
@@ -510,6 +566,8 @@ class PortfolioService:
             }
 
         except Exception as e:
-            print(f"Erro Monte Carlo: {e}")
+            print("🔥 ERRO CRÍTICO (EXCEPTION):")
+            traceback.print_exc() # Imprime o erro detalhado no terminal
             return {"status": "Erro", "msg": str(e)}
-        finally: Session.remove()
+        finally:
+            Session.remove()

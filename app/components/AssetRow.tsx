@@ -1,16 +1,17 @@
 'use client';
 import { useState } from 'react';
-import { Snowflake, TrendingUp, TrendingDown, Pencil, Scale } from 'lucide-react';
-import { formatMoney, getStatusColor, getStatusBg } from '../utils';
+import { Snowflake, TrendingUp, TrendingDown, Pencil, FileText } from 'lucide-react'; // 👈 Adicionei FileText
+import { formatMoney, getStatusBg, getStatusColor } from '../utils'; // Ajuste se necessário
 import { Asset } from '../types';
 
 interface AssetRowProps {
   ativo: Asset;
   tab: string;
   onEdit: (ativo: Asset) => void;
+  onViewNews?: (ticker: string) => void; // 👈 Nova Prop Opcional
 }
 
-export const AssetRow = ({ ativo, tab, onEdit }: AssetRowProps) => {
+export const AssetRow = ({ ativo, tab, onEdit, onViewNews }: AssetRowProps) => {
   const percentualDaMeta = ativo.meta > 0 ? (ativo.pct_na_categoria / ativo.meta) * 100 : 0;
   const barraWidth = Math.min(percentualDaMeta, 100);
   const isOverweight = ativo.pct_na_categoria > ativo.meta;
@@ -42,7 +43,26 @@ export const AssetRow = ({ ativo, tab, onEdit }: AssetRowProps) => {
           <div>
             <div className="font-bold text-white text-sm flex items-center gap-2">
                 {ativo.ticker}
-                <button onClick={() => onEdit(ativo)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-all cursor-pointer"><Pencil size={12} /></button>
+                
+                {/* Botão de Editar */}
+                <button 
+                    onClick={() => onEdit(ativo)} 
+                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-all cursor-pointer"
+                    title="Editar Ativo"
+                >
+                    <Pencil size={12} />
+                </button>
+
+                {/* 👇 Botão de Notícias (NOVO) */}
+                {onViewNews && (
+                    <button 
+                        onClick={() => onViewNews(ativo.ticker)} 
+                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-emerald-400 transition-all cursor-pointer"
+                        title="Ver Notícias"
+                    >
+                        <FileText size={12} />
+                    </button>
+                )}
             </div>
             <div className="text-[10px] text-slate-500 uppercase">{ativo.tipo} • {ativo.qtd} un</div>
           </div>

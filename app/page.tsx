@@ -7,12 +7,12 @@ import {
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
 import { AssetRow } from './components/AssetRow';
-// import { AllocationChart } from './components/AllocationChart'; <--- REMOVIDO
 import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
+import AssetNewsPanel from './components/AssetNewsPanel.tsx'; // 👈 Importação nova
 import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart'; 
 
@@ -22,6 +22,9 @@ export default function Home() {
   const [tab, setTab] = useState('Resumo');
   const [editingAsset, setEditingAsset] = useState<any>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
+  // 👇 Estado para controlar qual ativo está com o painel de notícias aberto
+  const [newsTicker, setNewsTicker] = useState<string | null>(null);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
@@ -58,7 +61,7 @@ export default function Home() {
   );
 
   return (
-    <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20">
+    <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20 relative">
       
       {/* HEADER FIXO */}
       <div className="sticky top-0 z-30 bg-[#0b0f19]/80 backdrop-blur-md border-b border-slate-800/50">
@@ -119,33 +122,32 @@ export default function Home() {
               
               <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
                   <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                     <Target size={40} className="text-blue-400" />
+                      <Target size={40} className="text-blue-400" />
                   </div>
                   <div className="flex justify-between items-start mb-2">
-                     <div className="flex flex-col">
-                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
-                         <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
-                     </div>
-                     <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <div className="flex flex-col">
+                          <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
+                          <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
+                      </div>
+                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
                           <TrendingUp size={20} className="text-blue-400"/>
-                     </div>
+                      </div>
                   </div>
                   <div>
-                     {topCompras.length > 0 ? (
-                       <div className="flex items-end gap-2">
+                      {topCompras.length > 0 ? (
+                        <div className="flex items-end gap-2">
                           <h3 className="text-2xl font-bold text-white tracking-tight">{topCompras[0].ticker}</h3>
                           <span className="text-xs text-green-400 mb-1.5 font-bold flex items-center">
                              <ArrowUpRight size={12}/> {topCompras[0].recomendacao}
                           </span>
-                       </div>
-                     ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
+                        </div>
+                      ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
                   </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                <div className="flex flex-col h-full">
-                  {/* AllocationChart removido. RiskRadar assume a coluna. */}
                   <RiskRadar alertas={data?.alertas || []} />
                </div>
                <div className="lg:col-span-2 flex flex-col h-full">
@@ -196,6 +198,8 @@ export default function Home() {
                         ativo={ativo} 
                         tab={tab} 
                         onEdit={(a) => setEditingAsset(a)}
+                        // 👇 NOVA PROP: Passa a função para abrir o painel
+                        onViewNews={(ticker) => setNewsTicker(ticker)}
                       />
                     ))
                   ) : (
@@ -221,8 +225,14 @@ export default function Home() {
             onClose={() => setIsAddModalOpen(false)} 
             onSuccess={() => refetch(true)}
         />
+
+        {/* 👇 PAINEL DE NOTÍCIAS (DRAWER) */}
+        <AssetNewsPanel 
+            ticker={newsTicker} 
+            onClose={() => setNewsTicker(null)} 
+        />
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.1 (Optimized)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.2 (News Edition)</div>
       </div>
     </main>
   );
