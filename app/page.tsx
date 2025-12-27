@@ -7,14 +7,13 @@ import {
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
 import { AssetRow } from './components/AssetRow';
-import { AllocationChart } from './components/AllocationChart';
+// import { AllocationChart } from './components/AllocationChart'; <--- REMOVIDO
 import { RiskRadar } from './components/RiskRadar';
 import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
 import { useAssetData } from './hooks/useAssetData';
-// 1. Importando o novo componente
 import MonteCarloChart from './components/MonteCarloChart'; 
 
 export default function Home() {
@@ -146,17 +145,15 @@ export default function Home() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                <div className="flex flex-col h-full">
-                  <AllocationChart data={data?.grafico || []} />
-                  <div className="mt-4">
-                      <RiskRadar alertas={data?.alertas || []} />
-                  </div>
+                  {/* AllocationChart removido. RiskRadar assume a coluna. */}
+                  <RiskRadar alertas={data?.alertas || []} />
                </div>
                <div className="lg:col-span-2 flex flex-col h-full">
                    <CategorySummary ativos={data?.ativos || []} />
                </div>
             </div>
 
-            {/* 2. Seção de Análise Avançada com Monte Carlo */}
+            {/* Seção de Análise Avançada com Monte Carlo */}
             <div className="mt-4">
                 <MonteCarloChart />
             </div>
