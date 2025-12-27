@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./server
+    container_name: assetflow-backend
+    ports:
+      - "5328:5328"
+    volumes:
+      # Persistência: O arquivo do banco no PC local é espelhado dentro do container
+      - ./server/assetflow.db:/app/assetflow.db
+      - ./server/backups:/app/backups
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: assetflow-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Configura o Next.js para falar com o backend via nome do serviço docker ou browser
+      # Como o Next roda client-side (navegador), ele precisa bater no localhost ou IP da máquina
+      - NEXT_PUBLIC_API_URL=http://localhost:5328
+    depends_on:
+      - backend
+    restart: unless-stopped
