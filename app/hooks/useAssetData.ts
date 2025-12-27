@@ -1,52 +1,51 @@
-// app/hooks/useAssetData.ts
-import { useState, useEffect, useCallback } from 'react';
+import useSWR, { mutate } from 'swr';
 import { DashboardData } from '../types';
 
+// O fetcher padrão que o SWR vai usar
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Erro API: ${res.status} - ${errorText}`);
+  }
+  const data = await res.json();
+  if (data.status === 'Erro') throw new Error(data.msg || 'Erro desconhecido');
+  return data;
+};
+
 export function useAssetData() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 1. Hook para os dados principais (Dashboard)
+  // refreshInterval: 60000 faz ele atualizar sozinho a cada 1 minuto se a janela estiver aberta
+  const { 
+    data, 
+    error: errorDashboard, 
+    isLoading: loadingDashboard,
+    mutate: mutateDashboard 
+  } = useSWR<DashboardData>('/api/index', fetcher, {
+    refreshInterval: 60000, 
+    revalidateOnFocus: true
+  });
 
-  const fetchData = useCallback(async (force = false) => {
-    if (force) setRefreshing(true);
-    else setLoading(true);
-    
-    setError(null);
-    const url = force ? '/api/index?force=true' : '/api/index';
+  // 2. Hook para o histórico (pode ser carregado separado)
+  const { 
+    data: history, 
+    error: errorHistory, 
+    isLoading: loadingHistory 
+  } = useSWR<any[]>('/api/history', fetcher);
 
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-         const text = await res.text();
-         throw new Error(`Erro API: ${res.status} - ${text.substring(0, 50)}...`);
-      }
-      const d = await res.json();
-      
-      if(d.status === 'Erro') throw new Error(d.detalhe || d.msg);
-      
-      setData(d);
-    } catch (err: any) {
-      console.error(err);
-      setError("Não foi possível conectar ao servidor. Verifique o terminal.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // Função para forçar atualização (ex: botão "Atualizar Agora")
+  const refreshAll = async () => {
+    // Primeiro chama a API forçando atualização no backend
+    await fetch('/api/index?force=true'); 
+    // Depois diz pro SWR revalidar os dados locais
+    mutateDashboard(); 
+  };
 
-    try {
-        const hRes = await fetch('/api/history');
-        const hData = await hRes.json();
-        setHistory(hData);
-    } catch (e) {
-        console.error("Erro ao buscar histórico", e);
-    }
-  }, []);
-
-  useEffect(() => { 
-      fetchData(); 
-  }, [fetchData]);
-
-  return { data, history, loading, refreshing, error, refetch: fetchData };
+  return {
+    data,
+    history: history || [],
+    loading: loadingDashboard || loadingHistory,
+    error: errorDashboard ? errorDashboard.message : (errorHistory ? errorHistory.message : null),
+    refetch: refreshAll
+  };
 }

@@ -6,6 +6,7 @@ import yfinance as yf
 import math
 import pandas as pd
 import time
+import numpy as np
 from datetime import datetime, date
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -407,5 +408,108 @@ class PortfolioService:
             return {"status": "Sucesso", "msg": f"{ticker} foi excluído."}
         except Exception as e:
             session.rollback()
+            return {"status": "Erro", "msg": str(e)}
+        finally: Session.remove()
+
+    # Adicione imports no topo do arquivo services.py se não tiver:
+    # import numpy as np
+
+    def run_monte_carlo_simulation(self, days=252, simulations=1000):
+        """
+        Simula 1000 cenários possíveis para o portfólio no próximo ano (252 dias úteis).
+        Retorna: Dados para plotar o "Cone de Incerteza".
+        """
+        print("🎲 Rodando Monte Carlo...")
+        session = Session()
+        try:
+            # 1. Pegar ativos que compõem a carteira (Ações/FIIs/ETF)
+            positions = session.query(Position).all()
+            tickers = []
+            weights = []
+            total_value = 0
+            
+            # Calcular pesos atuais
+            for pos in positions:
+                # Ignora Renda Fixa/Caixa para simplificar a volatilidade (assume constante)
+                if pos.asset.category.name in ['Ação', 'FII', 'ETF', 'Internacional']:
+                    # Tenta pegar preço atual, senão usa PM
+                    mdata = pos.asset.market_data[0] if pos.asset.market_data else None
+                    price = float(mdata.price) if (mdata and mdata.price) else float(pos.average_price)
+                    val = float(pos.quantity) * price
+                    if val > 0:
+                        tickers.append(pos.asset.ticker + (".SA" if pos.asset.category.name != 'Internacional' else ""))
+                        weights.append(val)
+                        total_value += val
+            
+            if not tickers or total_value == 0:
+                return {"status": "Erro", "msg": "Sem dados suficientes para simulação"}
+
+            # Normalizar pesos
+            weights = [w / total_value for w in weights]
+            weights = np.array(weights)
+
+            # 2. Baixar histórico longo (1 ano) para calcular covariância
+            data = yf.download(tickers, period="1y", group_by='ticker', progress=False)
+            
+            # Tratar estrutura do DF do yfinance
+            if len(tickers) == 1:
+                close_prices = data['Close'].to_frame()
+                close_prices.columns = tickers
+            else:
+                close_prices = pd.DataFrame()
+                for t in tickers:
+                    try:
+                        close_prices[t] = data[t]['Close']
+                    except: pass # Se falhar um, ignora
+            
+            close_prices = close_prices.dropna()
+            
+            # 3. Calcular Retornos Diários e Estatísticas (A Física da coisa!)
+            returns = close_prices.pct_change()
+            mean_returns = returns.mean()
+            cov_matrix = returns.cov()
+            
+            # Retorno e Volatilidade esperada do PORTFÓLIO
+            port_return = np.sum(mean_returns * weights) * days
+            port_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(days)
+            
+            # 4. A Simulação (Movimento Browniano Geométrico)
+            # S_t = S_0 * exp((mu - 0.5 * sigma^2)*t + sigma * W_t)
+            simulation_df = pd.DataFrame()
+            
+            last_price = total_value
+            
+            for x in range(simulations):
+                # Gera série de choques aleatórios (Ruído Gaussiano)
+                price_series = []
+                price = last_price
+                # Simulação vetorizada é mais rápida, mas fazendo loop simples para clareza:
+                daily_vol = port_volatility / np.sqrt(days)
+                daily_ret = port_return / days
+                
+                # Gerar 'days' dias aleatórios
+                random_shocks = np.random.normal(daily_ret, daily_vol, days)
+                
+                # Caminho acumulado
+                price_path = last_price * (1 + random_shocks).cumprod()
+                
+                # Salvamos apenas percentis para enviar ao front (não enviar 1000 linhas)
+                simulation_df[x] = price_path
+
+            # Pegar percentis (Pior caso, Médio, Melhor caso)
+            results = {
+                "pior_caso": simulation_df.quantile(0.05, axis=1).tolist(), # 5% probabilidade
+                "medio": simulation_df.mean(axis=1).tolist(),
+                "melhor_caso": simulation_df.quantile(0.95, axis=1).tolist() # 95% probabilidade
+            }
+            
+            return {
+                "status": "Sucesso", 
+                "volatilidade_anual": f"{port_volatility*100:.2f}%",
+                "projecao": results
+            }
+
+        except Exception as e:
+            print(f"Erro Monte Carlo: {e}")
             return {"status": "Erro", "msg": str(e)}
         finally: Session.remove()

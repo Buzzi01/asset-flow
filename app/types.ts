@@ -1,11 +1,11 @@
 // app/types.ts
 
 export interface AssetMetrics {
-  vi_graham: number;
-  mg_graham: number;
-  magic_number: number;
-  renda_mensal_est: number;
-  p_vp?: number; // Preço sobre Valor Patrimonial
+  vi_graham?: number;
+  mg_graham?: number;
+  magic_number?: number;
+  renda_mensal_est?: number;
+  p_vp?: number;
 }
 
 export interface Asset {
@@ -31,12 +31,12 @@ export interface Asset {
   score: number;
   motivo: string;
   
-  // Campos Manuais e Métricas
+  // Campos Manuais e Métricas (Unificados)
   manual_dy?: number;
   manual_lpa?: number;
   manual_vpa?: number;
   
-  // Métricas dinâmicas (propriedades espalhadas do backend)
+  // Spread das métricas (propriedades dinâmicas do backend)
   vi_graham?: number;
   mg_graham?: number;
   magic_number?: number;
@@ -52,7 +52,7 @@ export interface DashboardData {
     RendaMensal: number;
     TotalInvestido: number;
     LucroTotal: number;
-    [key: string]: number; // Para totais dinâmicos de categoria
+    [key: string]: number; 
   };
   grafico: { name: string; value: number }[];
   alertas: string[];

@@ -13,10 +13,11 @@ import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
-import { useAssetData } from './hooks/useAssetData'; // <--- Importando o Hook
+import { useAssetData } from './hooks/useAssetData';
+// 1. Importando o novo componente
+import MonteCarloChart from './components/MonteCarloChart'; 
 
 export default function Home() {
-  // Lógica separada no hook
   const { data, history, loading, refreshing, error, refetch } = useAssetData();
   
   const [tab, setTab] = useState('Resumo');
@@ -118,28 +119,28 @@ export default function Home() {
               <StatCard title="Lucro / Prejuízo" value={(lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}/>
               
               <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
-                 <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                    <Target size={40} className="text-blue-400" />
-                 </div>
-                 <div className="flex justify-between items-start mb-2">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
-                        <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
-                    </div>
-                    <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                         <TrendingUp size={20} className="text-blue-400"/>
-                    </div>
-                 </div>
-                 <div>
-                    {topCompras.length > 0 ? (
-                      <div className="flex items-end gap-2">
-                         <h3 className="text-2xl font-bold text-white tracking-tight">{topCompras[0].ticker}</h3>
-                         <span className="text-xs text-green-400 mb-1.5 font-bold flex items-center">
-                            <ArrowUpRight size={12}/> {topCompras[0].recomendacao}
-                         </span>
-                      </div>
-                    ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
-                 </div>
+                  <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                     <Target size={40} className="text-blue-400" />
+                  </div>
+                  <div className="flex justify-between items-start mb-2">
+                     <div className="flex flex-col">
+                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
+                         <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
+                     </div>
+                     <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                          <TrendingUp size={20} className="text-blue-400"/>
+                     </div>
+                  </div>
+                  <div>
+                     {topCompras.length > 0 ? (
+                       <div className="flex items-end gap-2">
+                          <h3 className="text-2xl font-bold text-white tracking-tight">{topCompras[0].ticker}</h3>
+                          <span className="text-xs text-green-400 mb-1.5 font-bold flex items-center">
+                             <ArrowUpRight size={12}/> {topCompras[0].recomendacao}
+                          </span>
+                       </div>
+                     ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
+                  </div>
               </div>
             </div>
 
@@ -153,6 +154,11 @@ export default function Home() {
                <div className="lg:col-span-2 flex flex-col h-full">
                    <CategorySummary ativos={data?.ativos || []} />
                </div>
+            </div>
+
+            {/* 2. Seção de Análise Avançada com Monte Carlo */}
+            <div className="mt-4">
+                <MonteCarloChart />
             </div>
             
           </div>
