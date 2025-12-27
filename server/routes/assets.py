@@ -83,4 +83,19 @@ def update_asset():
     except Exception as e:
         return jsonify({"status": "Erro", "msg": str(e)}), 500
 
-# (A rota delete_asset pode continuar simples pois só recebe ticker)
+@assets_bp.route('/api/delete_asset', methods=['POST'])
+def delete_asset():
+    try:
+        data = request.json
+        ticker = data.get('ticker')
+        
+        if not ticker:
+            return jsonify({"status": "Erro", "msg": "Ticker não informado"}), 400
+
+        # Chama a função que você editou no services.py
+        result = service.delete_asset(ticker)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"status": "Erro", "msg": str(e)}), 500
