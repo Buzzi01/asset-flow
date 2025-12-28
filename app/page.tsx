@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle 
+  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle, 
+  Brain // 👈 Importei o Cérebro aqui
 } from 'lucide-react';
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
@@ -12,7 +13,7 @@ import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
-import AssetNewsPanel from './components/AssetNewsPanel'; // Ajustei o import removendo o .tsx (padrão)
+import AssetNewsPanel from './components/AssetNewsPanel'; 
 import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart'; 
 
@@ -23,8 +24,11 @@ export default function Home() {
   const [editingAsset, setEditingAsset] = useState<any>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   
-  // 👇 Estado para controlar qual ativo está com o painel de notícias aberto
+  // Controle do Painel de Notícias
   const [newsTicker, setNewsTicker] = useState<string | null>(null);
+
+  // Controle do Botão de Fundamentos
+  const [updatingFundamentals, setUpdatingFundamentals] = useState(false);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
@@ -41,6 +45,21 @@ export default function Home() {
   const filteredAssets = data?.ativos?.filter((a) => tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
+
+  // --- FUNÇÃO PARA ATUALIZAR FUNDAMENTOS ---
+  const handleUpdateFundamentals = async () => {
+    setUpdatingFundamentals(true);
+    try {
+      await fetch('http://localhost:5328/api/update-fundamentals', { method: 'POST' });
+      alert("Sucesso! Inteligência (Graham, Bazin, DY) atualizada.");
+      refetch(true); 
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao conectar com o servidor.");
+    } finally {
+      setUpdatingFundamentals(false);
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-500 gap-4">
@@ -79,11 +98,25 @@ export default function Home() {
                 <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
              </button>
 
+             {/* 👇 BOTÃO DE FUNDAMENTOS COM ÍCONE DE CÉREBRO */}
+             <button 
+                onClick={handleUpdateFundamentals} 
+                disabled={updatingFundamentals}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50 group"
+                title="Baixar Fundamentos (LPA, VPA, DY)"
+             >
+                {/* Ícone Brain (Cérebro) */}
+                <Brain 
+                  size={16} 
+                  className={updatingFundamentals ? 'animate-pulse text-emerald-400' : 'group-hover:text-purple-400 transition-colors'} 
+                />
+             </button>
+
              <button 
                 onClick={() => refetch(true)} 
                 disabled={refreshing}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50"
-                title="Forçar atualização"
+                title="Forçar atualização de Preços"
              >
                 <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
              </button>
@@ -155,7 +188,6 @@ export default function Home() {
                </div>
             </div>
 
-            {/* Seção de Análise Avançada com Monte Carlo */}
             <div className="mt-4">
                 <MonteCarloChart />
             </div>
@@ -192,14 +224,13 @@ export default function Home() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {filteredAssets.length > 0 ? (
-                    filteredAssets.map((ativo, index) => ( // 👈 RECUPERANDO O INDEX
+                    filteredAssets.map((ativo, index) => ( 
                       <AssetRow 
                         key={ativo.ticker} 
                         ativo={ativo} 
                         tab={tab} 
                         onEdit={(a) => setEditingAsset(a)}
                         onViewNews={(ticker) => setNewsTicker(ticker)}
-                        // 👇 PASSANDO PROPS PARA O ASSETROW SABER ONDE ESTÁ
                         index={index}
                         total={filteredAssets.length}
                       />
@@ -228,7 +259,6 @@ export default function Home() {
             onSuccess={() => refetch(true)}
         />
 
-        {/* 👇 PAINEL DE NOTÍCIAS (DRAWER) */}
         <AssetNewsPanel 
             ticker={newsTicker} 
             onClose={() => setNewsTicker(null)} 

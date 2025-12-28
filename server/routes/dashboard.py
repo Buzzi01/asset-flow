@@ -31,3 +31,9 @@ def get_history():
 @dashboard_bp.route('/api/health', methods=['GET'])
 def health():
     return jsonify({"status": "running", "db": "sqlite", "container": os.environ.get('IS_DOCKER', 'false')})
+
+@dashboard_bp.route('/api/update-fundamentals', methods=['POST'])
+def trigger_fundamentals():
+    service = PortfolioService()
+    result = service.update_fundamentals()
+    return jsonify(result)

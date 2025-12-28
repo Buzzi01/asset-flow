@@ -1,26 +1,28 @@
-version: '3.8'
-
 services:
+  # --- Serviço do Backend (Python) ---
   backend:
     build: ./server
-    container_name: assetflow-backend
+    container_name: assetflow_backend
+    restart: always
     ports:
       - "5328:5328"
     volumes:
-      # Persistência: O arquivo do banco no PC local é espelhado dentro do container
-      - ./server/assetflow.db:/app/assetflow.db
-      - ./server/backups:/app/backups
-    restart: unless-stopped
+      # Mapeia o banco de dados do seu PC para dentro do container
+      # Assim, se você deletar o container, não perde os dados!
+      - ./assetflow.db:/app/assetflow.db
+      - ./backups:/app/backups
+    environment:
+      - FLASK_ENV=production
 
+  # --- Serviço do Frontend (Next.js) ---
   frontend:
     build: .
-    container_name: assetflow-frontend
+    container_name: assetflow_frontend
+    restart: always
     ports:
       - "3000:3000"
     environment:
-      # Configura o Next.js para falar com o backend via nome do serviço docker ou browser
-      # Como o Next roda client-side (navegador), ele precisa bater no localhost ou IP da máquina
+      # O navegador do usuário (fora do docker) acessa o backend via localhost
       - NEXT_PUBLIC_API_URL=http://localhost:5328
     depends_on:
       - backend
-    restart: unless-stopped

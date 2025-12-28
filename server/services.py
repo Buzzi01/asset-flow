@@ -607,3 +607,55 @@ class PortfolioService:
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
+
+    def update_fundamentals(self):
+        print("📊 JOB: Atualizando Fundamentos (LPA, VPA, DY)...")
+        session = Session()
+        count = 0
+        try:
+            # Filtra apenas Ações e FIIs, pois ETFs/Cripto não têm LPA/VPA padrão
+            assets = session.query(Asset).join(Category).filter(
+                Category.name.in_(['Ação', 'FII'])
+            ).all()
+
+            for asset in assets:
+                try:
+                    # Monta o ticker correto (com .SA)
+                    suffix = ".SA" if not asset.ticker.endswith('.SA') else ""
+                    ticker_symbol = f"{asset.ticker}{suffix}"
+                    
+                    print(f"   🔎 Analisando {ticker_symbol}...")
+                    y_asset = yf.Ticker(ticker_symbol)
+                    info = y_asset.info
+                    
+                    # Tenta extrair dados com chaves de fallback (o Yahoo muda às vezes)
+                    lpa = info.get('trailingEps') or info.get('forwardEps') or 0
+                    vpa = info.get('bookValue') or 0
+                    
+                    # Dividend Yield (O Yahoo retorna em decimal, ex: 0.06 para 6%)
+                    dy = info.get('dividendYield') or info.get('trailingAnnualDividendYield') or 0
+                    
+                    # No caso de FIIs, o 'bookValue' às vezes vem errado ou zerado no Yahoo.
+                    # Mas se vier, usamos. Se não, mantemos o manual.
+                    
+                    pos = session.query(Position).filter_by(asset_id=asset.id).first()
+                    if pos:
+                        # Atualiza apenas se o valor encontrado for válido (> 0)
+                        if lpa != 0: pos.manual_lpa = round(lpa, 2)
+                        if vpa != 0: pos.manual_vpa = round(vpa, 2)
+                        if dy != 0: pos.manual_dy = round(dy, 4) # Salva 0.0650
+                        
+                        count += 1
+                        print(f"      ✅ LPA: {lpa} | VPA: {vpa} | DY: {dy*100:.2f}%")
+                
+                except Exception as e:
+                    print(f"      ⚠️ Falha em {asset.ticker}: {e}")
+            
+            session.commit()
+            return {"status": "Sucesso", "msg": f"{count} ativos atualizados com fundamentos!"}
+            
+        except Exception as e:
+            session.rollback()
+            return {"status": "Erro", "msg": str(e)}
+        finally:
+            Session.remove()

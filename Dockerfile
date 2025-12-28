@@ -1,21 +1,23 @@
-# Dockerfile (Frontend)
-FROM node:18-alpine
+# Usa uma imagem Python leve
+FROM python:3.11-slim
 
+# Define o diretório de trabalho dentro do container
 WORKDIR /app
 
-# Copia dependências primeiro para aproveitar cache
-COPY package.json package-lock.json* ./
+# Instala dependências do sistema necessárias para compilar algumas libs
+RUN apt-get update && apt-get install -y gcc python3-dev
 
-RUN npm install
+# Copia o arquivo de requisitos primeiro (para aproveitar cache)
+COPY requirements.txt .
 
-# Copia o resto do código
+# Instala as bibliotecas Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copia o restante do código do backend
 COPY . .
 
-# Cria o build de produção
-RUN npm run build
+# Expõe a porta 5328
+EXPOSE 5328
 
-# Expõe a porta do Next.js
-EXPOSE 3000
-
-# Inicia o servidor Next.js
-CMD ["npm", "start"]
+# Comando para iniciar o servidor
+CMD ["python", "backend.py"]
