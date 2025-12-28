@@ -1,23 +1,27 @@
-# Usa uma imagem Python leve
-FROM python:3.11-slim
+# -------------------------------------------
+# ARQUIVO: ./Dockerfile (Na pasta Raiz)
+# -------------------------------------------
 
-# Define o diretório de trabalho dentro do container
+# Usa imagem Node.js
+FROM node:20-alpine
+
+# Diretório de trabalho
 WORKDIR /app
 
-# Instala dependências do sistema necessárias para compilar algumas libs
-RUN apt-get update && apt-get install -y gcc python3-dev
+# Copia os arquivos de dependência
+COPY package*.json ./
 
-# Copia o arquivo de requisitos primeiro (para aproveitar cache)
-COPY requirements.txt .
+# Instala as dependências
+RUN npm install
 
-# Instala as bibliotecas Python
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copia o restante do código do backend
+# Copia o resto do código fonte
 COPY . .
 
-# Expõe a porta 5328
-EXPOSE 5328
+# Gera o build de produção
+RUN npm run build
 
-# Comando para iniciar o servidor
-CMD ["python", "backend.py"]
+# Expõe a porta 3000
+EXPOSE 3000
+
+# Inicia o servidor Next.js
+CMD ["npm", "start"]

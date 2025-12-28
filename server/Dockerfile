@@ -1,25 +1,26 @@
-# server/Dockerfile
-FROM python:3.9-slim
-
-# Evita arquivos .pyc e buffer de log
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV IS_DOCKER=true
+# -------------------------------------------
+# ARQUIVO: server/Dockerfile
+# -------------------------------------------
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instala dependências do sistema necessárias para compilar algumas libs python
-RUN apt-get update && apt-get install -y gcc \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc python3-dev
 
-COPY requirements.txt .
+# 1. Instala dependências
+COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o código
-COPY . .
+# 2. Copia AS DUAS pastas (server e database)
+# Se o build falhar aqui, é porque você não ajustou o "context: ." no docker-compose
+COPY database /app/database
+COPY server /app/server
 
-# Expõe a porta
+# 3. Define onde o Python deve procurar módulos (na raiz /app)
+ENV PYTHONPATH=/app
+
+# 4. Entra na pasta do servidor para rodar
+WORKDIR /app/server
+
 EXPOSE 5328
-
-# Comando para rodar
 CMD ["python", "backend.py"]

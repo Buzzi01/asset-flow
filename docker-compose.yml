@@ -1,20 +1,19 @@
 services:
-  # --- Serviço do Backend (Python) ---
   backend:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     container_name: assetflow_backend
     restart: always
     ports:
       - "5328:5328"
     volumes:
-      # Mapeia o banco de dados do seu PC para dentro do container
-      # Assim, se você deletar o container, não perde os dados!
-      - ./assetflow.db:/app/assetflow.db
+      # 👇 AQUI ESTÁ A CORREÇÃO: Mapeamos para dentro da pasta /server/
+      - ./assetflow.db:/app/server/assetflow.db
       - ./backups:/app/backups
     environment:
       - FLASK_ENV=production
 
-  # --- Serviço do Frontend (Next.js) ---
   frontend:
     build: .
     container_name: assetflow_frontend
@@ -22,7 +21,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # O navegador do usuário (fora do docker) acessa o backend via localhost
       - NEXT_PUBLIC_API_URL=http://localhost:5328
     depends_on:
       - backend
