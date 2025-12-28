@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
   Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle, 
-  Brain // 👈 Importei o Cérebro aqui
+  Brain, Calendar 
 } from 'lucide-react';
+import Link from 'next/link';
 import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
 import { AssetRow } from './components/AssetRow';
@@ -16,6 +17,7 @@ import { AddAssetModal } from './components/AddAssetModal';
 import AssetNewsPanel from './components/AssetNewsPanel'; 
 import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart'; 
+import { AlertsButton } from './components/AlertsButton'; // Importando o botão corrigido
 
 export default function Home() {
   const { data, history, loading, refreshing, error, refetch } = useAssetData();
@@ -61,15 +63,23 @@ export default function Home() {
     }
   };
 
+  // Função para abrir o modal vindo do Alerta
+  const handleFixAsset = (assetId: number) => {
+    const assetToEdit = data?.ativos.find((a: any) => a.id === assetId);
+    if (assetToEdit) {
+      setEditingAsset(assetToEdit);
+    }
+  };
+
   if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-500 gap-4">
+    <div className="min-h-screen bg-[#0b0f19] flex flex-col items-center justify-center text-slate-500 gap-4">
       <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       <p className="animate-pulse text-sm">Carregando Inteligência...</p>
     </div>
   );
 
   if (error) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-red-400 gap-4 p-4 text-center">
+    <div className="min-h-screen bg-[#0b0f19] flex flex-col items-center justify-center text-red-400 gap-4 p-4 text-center">
       <AlertTriangle size={48} />
       <h2 className="text-xl font-bold">Ocorreu um erro</h2>
       <p className="text-sm text-slate-500 max-w-md">{error}</p>
@@ -82,54 +92,59 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20 relative">
       
-      {/* HEADER FIXO */}
+      {/* HEADER FIXO E ORGANIZADO */}
       <div className="sticky top-0 z-30 bg-[#0b0f19]/80 backdrop-blur-md border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+          
+          {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-1.5 rounded-lg"><Wallet className="text-white" size={18} /></div>
             <h1 className="text-lg font-bold text-white tracking-tight">AssetFlow <span className="text-blue-500 text-xs font-normal ml-1">Pro</span></h1>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
-             <button 
-                onClick={() => setIsAddModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20"
-             >
-                <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
-             </button>
+          <div className="flex items-center gap-3">
+             
+             {/* GRUPO 1: AÇÕES PRINCIPAIS (Botões com Texto) */}
+             <div className="flex items-center gap-2">
+                <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 hover:border-slate-600 group">
+                    <Calendar size={16} className="text-blue-400 group-hover:text-white transition-colors" /> 
+                    <span className="hidden sm:inline">Agenda</span>
+                </Link>
 
-             {/* 👇 BOTÃO DE FUNDAMENTOS COM ÍCONE DE CÉREBRO */}
-             <button 
-                onClick={handleUpdateFundamentals} 
-                disabled={updatingFundamentals}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50 group"
-                title="Baixar Fundamentos (LPA, VPA, DY)"
-             >
-                {/* Ícone Brain (Cérebro) */}
-                <Brain 
-                  size={16} 
-                  className={updatingFundamentals ? 'animate-pulse text-emerald-400' : 'group-hover:text-purple-400 transition-colors'} 
-                />
-             </button>
+                <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40">
+                    <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
+                </button>
+             </div>
 
-             <button 
-                onClick={() => refetch(true)} 
-                disabled={refreshing}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50"
-                title="Forçar atualização de Preços"
-             >
-                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-             </button>
+             {/* Separador Vertical */}
+             <div className="h-6 w-px bg-slate-800 mx-1"></div>
 
-             <div className="text-right hidden sm:block">
-                <p className="text-[10px] text-slate-500 uppercase font-bold">Patrimônio Total</p>
-                <p className="text-xl font-bold text-white">{data ? formatMoney(data.resumo.Total) : '...'}</p>
+             {/* GRUPO 2: FERRAMENTAS (Botões Quadrados) */}
+             <div className="flex items-center gap-2">
+                {/* Botão de Alerta (Agora seguro) */}
+                <AlertsButton onFixAsset={handleFixAsset} />
+
+                {/* Botão Cérebro (Fundamentos) */}
+                <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50 group" title="Baixar Fundamentos (LPA, VPA, DY)">
+                    <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : 'group-hover:text-purple-400 transition-colors'} />
+                </button>
+
+                {/* Botão Refresh (Preços) */}
+                <button onClick={() => refetch(true)} disabled={refreshing} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50" title="Forçar atualização de Preços">
+                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                </button>
+             </div>
+
+             {/* Total do Patrimônio (Só aparece em telas maiores) */}
+             <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2">
+                <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Patrimônio</p>
+                <p className="text-lg font-bold text-white leading-tight">{data ? formatMoney(data.resumo.Total) : '...'}</p>
              </div>
           </div>
         </div>
         
         {/* ABAS */}
-        <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar">
+        <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar border-t border-slate-800/30">
           {categories.map((c) => (
             <button key={c.id} onClick={() => setTab(c.id)} 
               className={`flex items-center gap-2 px-1 py-3 text-xs font-medium transition-all relative border-b-2 ${
@@ -148,6 +163,7 @@ export default function Home() {
         {tab === 'Resumo' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
+            {/* Linha 1: Cards KPI */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard title="Renda Passiva Est." value={formatMoney(data?.resumo?.RendaMensal || 0)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
               <StatCard title="Total Investido" value={formatMoney(data?.resumo?.TotalInvestido || 0)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
@@ -179,6 +195,7 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Linha 2: Radar e Gráfico Pizza */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                <div className="flex flex-col h-full">
                   <RiskRadar alertas={data?.alertas || []} />
@@ -188,8 +205,9 @@ export default function Home() {
                </div>
             </div>
 
+            {/* Linha 3: Monte Carlo */}
             <div className="mt-4">
-                <MonteCarloChart />
+               <MonteCarloChart />
             </div>
             
           </div>
