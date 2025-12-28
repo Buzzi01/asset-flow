@@ -12,7 +12,7 @@ import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
-import AssetNewsPanel from './components/AssetNewsPanel.tsx'; // 👈 Importação nova
+import AssetNewsPanel from './components/AssetNewsPanel'; // Ajustei o import removendo o .tsx (padrão)
 import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart'; 
 
@@ -192,14 +192,16 @@ export default function Home() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {filteredAssets.length > 0 ? (
-                    filteredAssets.map((ativo) => (
+                    filteredAssets.map((ativo, index) => ( // 👈 RECUPERANDO O INDEX
                       <AssetRow 
                         key={ativo.ticker} 
                         ativo={ativo} 
                         tab={tab} 
                         onEdit={(a) => setEditingAsset(a)}
-                        // 👇 NOVA PROP: Passa a função para abrir o painel
                         onViewNews={(ticker) => setNewsTicker(ticker)}
+                        // 👇 PASSANDO PROPS PARA O ASSETROW SABER ONDE ESTÁ
+                        index={index}
+                        total={filteredAssets.length}
                       />
                     ))
                   ) : (
@@ -232,7 +234,7 @@ export default function Home() {
             onClose={() => setNewsTicker(null)} 
         />
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.2 (News Edition)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.3 (Pro Insights)</div>
       </div>
     </main>
   );

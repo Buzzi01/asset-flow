@@ -24,35 +24,40 @@ class PortfolioService:
 
     def _extract_value(self, data_point):
         try:
-            if hasattr(data_point, 'iloc'):
-                return float(data_point.iloc[0])
-            if hasattr(data_point, 'item'):
-                return float(data_point.item())
+            if hasattr(data_point, 'iloc'): return float(data_point.iloc[0])
+            if hasattr(data_point, 'item'): return float(data_point.item())
             return float(data_point)
-        except:
-            return 0.0
+        except: return 0.0
 
     def get_usd_rate(self):
         try:
             ticker = yf.Ticker("BRL=X")
-            # Tenta pegar o preço mais atual possível
             data = ticker.history(period="1d")
-            if not data.empty:
-                return float(data['Close'].iloc[-1])
+            if not data.empty: return float(data['Close'].iloc[-1])
         except Exception as e:
             print(f"⚠️ Erro ao buscar Dólar: {e}")
-        return 5.80 # Fallback seguro
+        return 5.80 
+
+    # --- 🧠 CÁLCULOS TÉCNICOS ---
+    def _calculate_rsi(self, series, period=14):
+        if len(series) < period + 1: return 50.0
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
+
+    def _calculate_sma(self, series, window=20):
+        if len(series) < window: return float(series.mean())
+        return float(series.rolling(window=window).mean().iloc[-1])
 
     def update_prices(self):
-        print("🔄 JOB: Atualizando Preços (Modo BATCH - Otimizado)...")
-        
+        print("🔄 JOB: Atualizando Preços & Inteligência Técnica...")
         session = Session()
         try:
             assets = session.query(Asset).filter(Asset.ticker != 'Nubank Caixinha').all()
-            
-            # 1. Preparar lista de tickers para download em lote
-            tickers_map = {} # Mapa: "PETR4.SA" -> asset_id
-            download_list = []
+            tickers_map = {}; download_list = []
 
             for asset in assets:
                 suffix = ".SA" if asset.category.name in ['Ação', 'FII', 'Renda Fixa', 'ETF'] and not asset.ticker.endswith('.SA') else ""
@@ -64,44 +69,40 @@ class PortfolioService:
                 print("⚠️ Nenhum ativo para atualizar.")
                 return
 
-            # 2. Download em Lote (MUITO MAIS RÁPIDO)
-            print(f"   ⬇️ Baixando dados para {len(download_list)} ativos...")
+            # Baixa 2 meses para ter histórico suficiente para RSI(14) e SMA(20)
+            print(f"   ⬇️ Baixando histórico (2 meses) para {len(download_list)} ativos...")
             try:
-                # group_by='ticker' garante estrutura consistente mesmo com 1 ativo
-                batch_data = yf.download(download_list, period="5d", group_by='ticker', threads=True)
+                batch_data = yf.download(download_list, period="2mo", group_by='ticker', threads=True, progress=False, auto_adjust=True)
             except Exception as e:
-                print(f"❌ Erro crítico no download em lote: {e}")
+                print(f"❌ Erro crítico no download: {e}")
                 return
 
             count_ok = 0
             
-            # 3. Processar resultados
             for symbol, asset in tickers_map.items():
                 try:
-                    # Tenta pegar os dados do DataFrame complexo do yfinance
-                    # Se baixou só um ativo, a estrutura é diferente, o yf tenta simplificar
+                    # Lógica de extração segura do DataFrame
+                    hist = pd.DataFrame()
                     if len(download_list) == 1:
-                        hist = batch_data
+                        if isinstance(batch_data, pd.DataFrame) and 'Close' in batch_data.columns:
+                            hist = batch_data
                     else:
-                        hist = batch_data[symbol]
+                        if symbol in batch_data.columns:
+                            hist = batch_data[symbol]
+                        elif 'Close' in batch_data.columns and symbol in batch_data['Close'].columns:
+                            hist = pd.DataFrame({'Close': batch_data['Close'][symbol]})
                     
-                    # Limpa linhas vazias (NaN)
                     hist = hist.dropna(how='all')
+                    if hist.empty or 'Close' not in hist.columns: continue
 
-                    if hist.empty:
-                        print(f"   ⚠️ Sem dados recentes para {asset.ticker}")
-                        continue
+                    close_series = hist['Close']
+                    current_price = float(close_series.iloc[-1])
+                    min_6m = float(close_series.min())
 
-                    current_price = float(hist['Close'].iloc[-1])
-                    min_6m = 0.0 
-                    # Nota: Para min_6m preciso, precisaríamos baixar 6mo. 
-                    # Para performance, mantemos 5d e pegamos a min do histórico curto ou
-                    # confiamos no histórico salvo anteriormente se não quisermos baixar tudo agora.
-                    # Aqui, vou pegar a mínima desses 5 dias para garantir que temos algo.
-                    if len(hist) > 0:
-                        min_6m = float(hist['Close'].min())
+                    # 🧠 Cálculo de Indicadores
+                    rsi = self._calculate_rsi(close_series, 14)
+                    sma20 = self._calculate_sma(close_series, 20)
 
-                    # --- Atualizar DB ---
                     mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                     if not mdata:
                         mdata = MarketData(asset_id=asset.id)
@@ -109,24 +110,13 @@ class PortfolioService:
                     
                     mdata.price = current_price
                     mdata.date = datetime.now()
-                    # Só atualiza a mínima se baixamos histórico suficiente ou se quisermos a min da semana
-                    # Se quiser manter a logica antiga de 6m, teria que baixar period="6mo" no batch.
-                    # Vou manter a atualização simples para não quebrar a lógica.
+                    mdata.rsi_14 = rsi
+                    mdata.sma_20 = sma20
+                    
                     if mdata.min_6m is None or min_6m < mdata.min_6m:
                          mdata.min_6m = min_6m
 
-                    # --- Fundamentos (Ainda precisa ser individual, mas fazemos sob demanda) ---
-                    # Para não travar o job, vamos pular fundamentos pesados no loop rápido
-                    # ou atualizar apenas se estiver zerado/velho.
-                    # Deixei comentado para priorizar velocidade. 
-                    # Se quiser ativar, descomente, mas vai lentificar.
-                    """
-                    if asset.category.name in ['Ação', 'FII']:
-                         # Lógica de info individual aqui (lento)
-                         pass 
-                    """
-
-                    print(f"   ✅ {asset.ticker}: R$ {current_price:.2f}")
+                    print(f"   ✅ {asset.ticker}: R$ {current_price:.2f} | RSI: {rsi:.0f}")
                     count_ok += 1
 
                 except Exception as e:
@@ -200,23 +190,22 @@ class PortfolioService:
                 meta_global_valor = resumo["Total"] * meta_macro * meta_micro
                 falta = meta_global_valor - item["total_atual"]
                 
-                rec_text, status, score, motivo = self._apply_strategy(pos, item["metrics"], falta, item["preco_atual"], item["min_6m"])
+                # Aplica Estratégia Híbrida
+                rec_text, status, score, motivo, rsi = self._apply_strategy(pos, item["metrics"], falta, item["preco_atual"], item["min_6m"])
                 
-                # --- SISTEMA DE ALERTAS ---
+                # --- SISTEMA DE ALERTAS INTELIGENTE ---
                 if pos.target_percent and pct_na_categoria > pos.target_percent * 1.5:
-                    alertas.append(f"REBALANCEAR:{pos.asset.ticker} ultrapassou a meta ideal ({pct_na_categoria:.1f}%)")
-                if item["min_6m"] > 0 and item["preco_atual"] <= item["min_6m"] * 1.03:
-                     alertas.append(f"QUEDA:{pos.asset.ticker} próximo da mínima")
-                if "mg_graham" in item["metrics"] and item["metrics"]["mg_graham"] > 50:
-                     alertas.append(f"GRAHAM:{pos.asset.ticker} está descontada")
-                if cat_name == "FII" and "p_vp" in item["metrics"]:
-                     pvp = item["metrics"]["p_vp"]
-                     if pvp > 0 and pvp < 0.95: 
-                         alertas.append(f"PVP:{pos.asset.ticker} está barato (P/VP {pvp:.2f})")
-                mn = item["metrics"].get("magic_number", 0)
-                if mn > 0 and pos.quantity < mn and (mn - pos.quantity) <= 5:
-                     alertas.append(f"MAGIC:{pos.asset.ticker} quase atingindo o Número Mágico")
+                    alertas.append(f"⚠️ REBALANCEAR: {pos.asset.ticker} estourou a meta ({pct_na_categoria:.1f}%)")
+                
+                if rsi < 30:
+                     alertas.append(f"💎 OPORTUNIDADE: {pos.asset.ticker} com RSI em {rsi:.0f} (Sobrevenda)")
+                elif rsi > 75:
+                     alertas.append(f"📈 ALERTA: {pos.asset.ticker} esticado (RSI {rsi:.0f})")
 
+                if item["min_6m"] > 0 and item["preco_atual"] <= item["min_6m"] * 1.03:
+                     alertas.append(f"📉 MÍNIMA: {pos.asset.ticker} no fundo de 6 meses")
+
+                # Adiciona à lista final
                 final_list.append({
                     "ticker": pos.asset.ticker,
                     "tipo": cat_name,
@@ -235,6 +224,7 @@ class PortfolioService:
                     "manual_lpa": pos.manual_lpa,
                     "manual_vpa": pos.manual_vpa,
                     "recomendacao": rec_text, "status": status, "score": score, "motivo": motivo,
+                    "rsi": rsi, # Manda o RSI para o front
                     **item["metrics"]
                 })
 
@@ -267,26 +257,97 @@ class PortfolioService:
         return m
 
     def _apply_strategy(self, pos, metrics, falta, preco, min_6m):
-        rec_text = "MANTER"; status = "NEUTRO"; motivo = []; score = 0
-        if falta > 0: score += 30; motivo.append("Abaixo da Meta")
-        else: score -= 20
+        """
+        Estratégia AssetFlow Pro 3.0:
+        Gera insights visuais e detalhados para o card do frontend.
+        """
+        score = 0
+        motivos = []
         
+        # 1. ESTRUTURAL (Peso: 40) - O pilar do Rebalanceamento
+        if falta > 0: 
+            score += 40
+            motivos.append("⚖️ Abaixo da Meta (Rebalancear)")
+        else: 
+            score -= 20
+            # motivos.append("⛔ Acima da Meta") # Opcional
+
+        # 2. FUNDAMENTOS (Peso: 35) - Graham & Bazin
         if pos.asset.category.name == "Ação":
-            if metrics["mg_graham"] > 20: score += 30; motivo.append("Graham Barato")
-            if min_6m > 0 and preco <= min_6m * 1.05: score += 20; motivo.append("No Fundo (6m)")
+            mg = metrics.get("mg_graham", 0)
+            if mg > 50:
+                score += 35
+                motivos.append(f"💎 Graham: Super Desconto (+{mg:.0f}%)")
+            elif mg > 20:
+                score += 20
+                motivos.append(f"💰 Graham: Oportunidade (+{mg:.0f}%)")
+            elif mg < -20:
+                score -= 10
+                motivos.append(f"💸 Graham: Preço Esticado ({mg:.0f}%)")
+                
         elif pos.asset.category.name == "FII":
-            if metrics["magic_number"] > 0 and pos.quantity >= metrics["magic_number"]: 
-                score += 10; motivo.append("Bola de Neve ❄️")
-            if metrics.get("p_vp", 0) > 0 and metrics.get("p_vp", 1) < 0.95:
-                score += 20; motivo.append("Desconto Patrimonial")
+            pvp = metrics.get("p_vp", 1)
+            if pvp > 0 and pvp < 0.90:
+                score += 35
+                motivos.append(f"🏢 P/VP: Muito Descontado ({pvp:.2f})")
+            elif pvp > 0 and pvp < 1.00:
+                score += 20
+                motivos.append(f"🏬 P/VP: Abaixo do Patrimonial ({pvp:.2f})")
+            elif pvp > 1.15:
+                score -= 10
+                motivos.append(f"⚠️ P/VP: Ágio Elevado ({pvp:.2f})")
 
+            mn = metrics.get("magic_number", 0)
+            if mn > 0 and pos.quantity >= mn:
+                score += 10
+                motivos.append("❄️ Efeito Bola de Neve Ativo")
+
+        # 3. TÉCNICA & MOMENTO (Peso: 25) - O "Timing"
+        rsi = 50
+        if pos.asset.market_data and len(pos.asset.market_data) > 0:
+            rsi = pos.asset.market_data[0].rsi_14 or 50
+        
+        # Análise de RSI (Índice de Força Relativa)
+        if rsi < 30:
+            score += 25
+            motivos.append(f"📉 RSI: Sobrevenda Extrema ({rsi:.0f})")
+        elif rsi < 40:
+            score += 15
+            motivos.append(f"↘️ RSI: Zona de Compra ({rsi:.0f})")
+        elif rsi > 70:
+            score -= 15
+            motivos.append(f"🔥 RSI: Sobrecomprado ({rsi:.0f})")
+        
+        # Análise de Preço vs Mínima (Timing de Fundo)
+        if min_6m > 0 and preco <= min_6m * 1.02: # 2% da mínima
+            score += 15
+            motivos.append("⚓ Na Mínima de 6 Meses")
+
+        # --- DEFINIÇÃO DO VEREDITO ---
         if falta > 0:
-            if score >= 60: status = "COMPRA_FORTE"; rec_text = "COMPRA FORTE"
-            elif score >= 30: status = "COMPRAR"; rec_text = "COMPRAR"
-            else: status = "AGUARDAR"; rec_text = "AGUARDAR"
-        else: status = "MANTER"; rec_text = "MANTER"
-        return rec_text, status, score, ", ".join(motivo)
+            if score >= 80: 
+                status = "COMPRA_FORTE"
+                rec_text = "💎 OPORTUNIDADE"
+            elif score >= 50: 
+                status = "COMPRAR"
+                rec_text = "COMPRAR"
+            elif score >= 20: 
+                status = "AGUARDAR"
+                rec_text = "OBSERVAR"
+            else:
+                status = "NEUTRO"
+                rec_text = "NEUTRO"
+        else:
+            status = "MANTER"
+            rec_text = "MANTER"
+            
+        # O separador ' • ' é crucial para o frontend quebrar as linhas
+        return rec_text, status, score, " • ".join(motivos), rsi
 
+    # ... (Mantenha _backup_database, take_daily_snapshot, get_history_data, update_position, add_new_asset, delete_asset e run_monte_carlo_simulation IGUAIS)
+    
+    # REUTILIZAR AS FUNÇÕES EXISTENTES QUE VOCÊ JÁ TEM NO ARQUIVO PARA NÃO REPETIR CÓDIGO
+    # (Copie o restante das funções utilitárias e o Monte Carlo blindado do seu arquivo original ou da minha resposta anterior)
     def _backup_database(self):
         try:
             backup_dir = 'backups'
@@ -411,22 +472,15 @@ class PortfolioService:
             return {"status": "Erro", "msg": str(e)}
         finally: Session.remove()
 
-    # Adicione imports no topo do arquivo services.py se não tiver:
-    # import numpy as np
-
     def run_monte_carlo_simulation(self, days=252, simulations=1000):
-        """
-        Simula 1000 cenários possíveis. Versão DEBUG BLINDADA.
-        """
         print("🎲 --- INICIANDO MONTE CARLO DEBUG ---")
         import numpy as np
         import pandas as pd
         import yfinance as yf
-        import traceback # Para ver o erro real
+        import traceback
 
         session = Session()
         try:
-            # PASSO 1: ATIVOS
             print("📍 Passo 1: Carregando posições...")
             positions = session.query(Position).all()
             tickers = []
@@ -435,10 +489,8 @@ class PortfolioService:
             
             for pos in positions:
                 if pos.asset.category.name in ['Ação', 'FII', 'ETF', 'Internacional']:
-                    # Prioridade: Preço Atual > Preço Médio
                     price = 0.0
                     if pos.asset.market_data and len(pos.asset.market_data) > 0:
-                        # Garante que é float
                         price = float(pos.asset.market_data[0].price or 0.0)
                     
                     if price == 0:
@@ -460,26 +512,20 @@ class PortfolioService:
                 print("❌ Erro: Sem ativos ou valor total zero.")
                 return {"status": "Erro", "msg": "Carteira vazia ou sem valor."}
 
-            # Normalizar pesos
             weights = np.array([w / total_value for w in weights])
 
-            # PASSO 2: DADOS HISTÓRICOS
             print("📍 Passo 2: Baixando dados do Yahoo Finance...")
-            # auto_adjust=True resolve o warning do log
             data = yf.download(tickers, period="1y", group_by='ticker', progress=False, auto_adjust=True)
             
             close_prices = pd.DataFrame()
 
-            # Lógica robusta para extrair apenas o 'Close'
             if len(tickers) == 1:
                 t = tickers[0]
-                # Se for 1 ativo, o yfinance retorna DataFrame direto ou Series
                 if isinstance(data, pd.DataFrame) and 'Close' in data.columns:
                     close_prices[t] = data['Close']
                 else:
-                    close_prices[t] = data # Tenta pegar direto
+                    close_prices[t] = data
             else:
-                # Múltiplos ativos
                 for t in tickers:
                     try:
                         if t in data.columns:
@@ -490,33 +536,28 @@ class PortfolioService:
                     except Exception as e:
                         print(f"⚠️ Aviso: Não consegui ler dados de {t}. Erro: {e}")
 
-            # Limpeza de dados
             close_prices = close_prices.dropna()
             
             if close_prices.empty:
                 print("❌ Erro: DataFrame de preços vazio após limpeza.")
                 return {"status": "Erro", "msg": "Dados insuficientes do Yahoo Finance."}
 
-            # PASSO 3: ESTATÍSTICAS
             print("📍 Passo 3: Calculando Matriz de Covariância...")
             returns = close_prices.pct_change().dropna()
             mean_returns = returns.mean()
             cov_matrix = returns.cov()
             
-            # Precisamos alinhar os pesos com os ativos que REALMENTE baixaram dados
             valid_tickers = close_prices.columns.tolist()
             valid_weights = []
             
-            # Recalcula pesos apenas para ativos válidos
             temp_total = 0
-            ticker_map = dict(zip(tickers, weights)) # Mapa original
+            ticker_map = dict(zip(tickers, weights))
             
             for t in valid_tickers:
                 w = ticker_map.get(t, 0)
                 valid_weights.append(w)
                 temp_total += w
             
-            # Normaliza de novo para somar 1 (100%)
             if temp_total == 0: temp_total = 1
             valid_weights = np.array([w/temp_total for w in valid_weights])
 
@@ -525,7 +566,6 @@ class PortfolioService:
 
             print(f"   Volatilidade Calculada: {port_volatility:.4f}")
 
-            # PASSO 4: SIMULAÇÃO (OTIMIZADA)
             print("📍 Passo 4: Rodando loops da simulação...")
             simulation_data = {}
             last_price = total_value
@@ -539,15 +579,11 @@ class PortfolioService:
 
             simulation_df = pd.DataFrame(simulation_data)
 
-            # PASSO 5: PREPARAÇÃO JSON
             print("📍 Passo 5: Formatando saída...")
-            
-            # .tolist() é CRUCIAL para o Flask conseguir ler (numpy array quebra o Flask)
             pior = simulation_df.quantile(0.05, axis=1).tolist()
             medio = simulation_df.mean(axis=1).tolist()
             melhor = simulation_df.quantile(0.95, axis=1).tolist()
             
-            # Verifica se tem NaN ou Infinito (quebra o JSON)
             if np.isnan(pior).any() or np.isnan(medio).any():
                 print("❌ Erro: Resultados contêm NaN (Not a Number)")
                 return {"status": "Erro", "msg": "Erro matemático na simulação."}
@@ -567,7 +603,7 @@ class PortfolioService:
 
         except Exception as e:
             print("🔥 ERRO CRÍTICO (EXCEPTION):")
-            traceback.print_exc() # Imprime o erro detalhado no terminal
+            traceback.print_exc()
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()

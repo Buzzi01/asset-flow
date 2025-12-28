@@ -41,20 +41,21 @@ class MarketData(Base):
     date = Column(Date, default=datetime.now)
     price = Column(Float)
     min_6m = Column(Float)
+    # Colunas de Inteligência Técnica
+    rsi_14 = Column(Float, nullable=True)
+    sma_20 = Column(Float, nullable=True)
+    
     asset = relationship("Asset", back_populates="market_data")
 
-# --- NOVO: TABELA DE HISTÓRICO ---
 class PortfolioSnapshot(Base):
     __tablename__ = 'snapshots'
-    
     id = Column(Integer, primary_key=True)
     date = Column(Date, default=datetime.now)
-    total_equity = Column(Float)      # Patrimônio Total
-    total_invested = Column(Float)    # Total Investido
-    profit = Column(Float)            # Lucro Nominal
-    
-    # Podemos adicionar composição por categoria depois se quiser
+    total_equity = Column(Float)      
+    total_invested = Column(Float)    
+    profit = Column(Float)            
 
+# Configuração do Banco
 engine = create_engine('sqlite:///assetflow.db', echo=False)
 Session = sessionmaker(bind=engine)
 
