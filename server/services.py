@@ -7,8 +7,10 @@ import math
 import pandas as pd
 import time
 import numpy as np
-from datetime import datetime, date
+import pytz # Importante para o cálculo de datas
+from datetime import datetime, date, timedelta
 from sqlalchemy.orm import scoped_session, sessionmaker
+import traceback
 
 # Ajuste para importar da pasta vizinha
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -238,14 +240,22 @@ class PortfolioService:
     def _calculate_metrics(self, pos, preco, min_6m):
         m = {"vi_graham": 0, "mg_graham": 0, "magic_number": 0, "renda_mensal_est": 0, "p_vp": 0}
         try:
-            dy = self._extract_value(pos.manual_dy)
+            dy = self._extract_value(pos.manual_dy)   # Ex: 0.1065 (10,65%)
             lpa = self._extract_value(pos.manual_lpa)
             vpa = self._extract_value(pos.manual_vpa)
             qtd = self._extract_value(pos.quantity)
             
-            if dy > 0:
-                m["renda_mensal_est"] = (dy * qtd) / 12
-                if preco > 0: m["magic_number"] = math.ceil(preco / (dy / 12))
+            # --- 🛠️ CORREÇÃO DE CÁLCULO AQUI ---
+            if dy > 0 and preco > 0:
+                # 1. Renda Mensal Estimada
+                # Fórmula: (Preço * PorcentagemDY * Quantidade) / 12 meses
+                m["renda_mensal_est"] = (preco * dy * qtd) / 12
+                
+                # 2. Magic Number (Número Mágico)
+                # Fórmula Simplificada: 12 / DY_Decimal
+                # Exemplo: Se DY é 12% (0.12): 12 / 0.12 = 100 cotas.
+                # (Significa que com 100 cotas, o dividendo mensal compra +1 cota)
+                m["magic_number"] = math.ceil(12 / dy)
             
             if vpa > 0 and preco > 0:
                 m["p_vp"] = preco / vpa
@@ -344,10 +354,6 @@ class PortfolioService:
         # O separador ' • ' é crucial para o frontend quebrar as linhas
         return rec_text, status, score, " • ".join(motivos), rsi
 
-    # ... (Mantenha _backup_database, take_daily_snapshot, get_history_data, update_position, add_new_asset, delete_asset e run_monte_carlo_simulation IGUAIS)
-    
-    # REUTILIZAR AS FUNÇÕES EXISTENTES QUE VOCÊ JÁ TEM NO ARQUIVO PARA NÃO REPETIR CÓDIGO
-    # (Copie o restante das funções utilitárias e o Monte Carlo blindado do seu arquivo original ou da minha resposta anterior)
     def _backup_database(self):
         try:
             backup_dir = 'backups'
@@ -474,11 +480,6 @@ class PortfolioService:
 
     def run_monte_carlo_simulation(self, days=252, simulations=1000):
         print("🎲 --- INICIANDO MONTE CARLO DEBUG ---")
-        import numpy as np
-        import pandas as pd
-        import yfinance as yf
-        import traceback
-
         session = Session()
         try:
             print("📍 Passo 1: Carregando posições...")
@@ -609,7 +610,7 @@ class PortfolioService:
             Session.remove()
 
     def update_fundamentals(self):
-        print("📊 JOB: Atualizando Fundamentos (LPA, VPA, DY)...")
+        print("📊 JOB: Calculando Fundamentos Reais (L12M)...")
         session = Session()
         count = 0
         try:
@@ -617,6 +618,10 @@ class PortfolioService:
             assets = session.query(Asset).join(Category).filter(
                 Category.name.in_(['Ação', 'FII'])
             ).all()
+
+            # Data de corte: Hoje menos 365 dias (12 meses)
+            tz = pytz.timezone("America/Sao_Paulo")
+            cutoff_date = datetime.now(tz) - timedelta(days=365)
 
             for asset in assets:
                 try:
@@ -626,33 +631,64 @@ class PortfolioService:
                     
                     print(f"   🔎 Analisando {ticker_symbol}...")
                     y_asset = yf.Ticker(ticker_symbol)
-                    info = y_asset.info
                     
-                    # Tenta extrair dados com chaves de fallback (o Yahoo muda às vezes)
+                    # 1. PEGAR O PREÇO ATUAL (Necessário para o cálculo)
+                    # Tenta pegar do fast_info (mais rápido e confiável para preço atual)
+                    current_price = 0
+                    if hasattr(y_asset, 'fast_info') and y_asset.fast_info.last_price:
+                         current_price = y_asset.fast_info.last_price
+                    else:
+                         # Fallback
+                         history = y_asset.history(period="1d")
+                         if not history.empty:
+                            current_price = history['Close'].iloc[-1]
+
+                    if current_price <= 0:
+                        print(f"      ⚠️ Preço zerado ou não encontrado. Pulando.")
+                        continue
+
+                    # 2. CALCULAR DIVIDENDOS (Lógica Manual L12M)
+                    # Baixa histórico de dividendos
+                    divs = y_asset.dividends
+                    
+                    # Filtra os últimos 12 meses (com tratamento de fuso horário)
+                    # Convertemos o index do pandas para timezone aware se necessário
+                    if not divs.empty:
+                        if divs.index.tz is None:
+                            divs.index = divs.index.tz_localize(tz)
+                        else:
+                            divs.index = divs.index.tz_convert(tz)
+                        
+                        divs_last_12m = divs[divs.index >= cutoff_date]
+                        total_divs_val = divs_last_12m.sum()
+                    else:
+                        total_divs_val = 0.0
+
+                    # O cálculo final do DY (Decimal: 0.06 para 6%)
+                    dy_calculated = total_divs_val / current_price
+
+                    # 3. PEGAR LPA e VPA (Yahoo Info costuma ser OK pra isso, mas tem falhas)
+                    info = y_asset.info
                     lpa = info.get('trailingEps') or info.get('forwardEps') or 0
                     vpa = info.get('bookValue') or 0
                     
-                    # Dividend Yield (O Yahoo retorna em decimal, ex: 0.06 para 6%)
-                    dy = info.get('dividendYield') or info.get('trailingAnnualDividendYield') or 0
-                    
-                    # No caso de FIIs, o 'bookValue' às vezes vem errado ou zerado no Yahoo.
-                    # Mas se vier, usamos. Se não, mantemos o manual.
-                    
                     pos = session.query(Position).filter_by(asset_id=asset.id).first()
                     if pos:
-                        # Atualiza apenas se o valor encontrado for válido (> 0)
                         if lpa != 0: pos.manual_lpa = round(lpa, 2)
                         if vpa != 0: pos.manual_vpa = round(vpa, 2)
-                        if dy != 0: pos.manual_dy = round(dy, 4) # Salva 0.0650
+                        
+                        # Salva o calculado, ignorando o campo 'dividendYield' bugado do Yahoo
+                        pos.manual_dy = round(dy_calculated, 4) 
                         
                         count += 1
-                        print(f"      ✅ LPA: {lpa} | VPA: {vpa} | DY: {dy*100:.2f}%")
+                        print(f"      💰 Preço: {current_price:.2f} | Divs 12m: R$ {total_divs_val:.2f}")
+                        print(f"      ✅ DY Calculado: {dy_calculated*100:.2f}%")
                 
                 except Exception as e:
                     print(f"      ⚠️ Falha em {asset.ticker}: {e}")
             
             session.commit()
-            return {"status": "Sucesso", "msg": f"{count} ativos atualizados com fundamentos!"}
+            return {"status": "Sucesso", "msg": f"{count} ativos recalculados com método L12M!"}
             
         except Exception as e:
             session.rollback()

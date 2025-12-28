@@ -22,5 +22,11 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:5328
+    # 👇 ADICIONE ESTAS LINHAS ABAIXO:
+    volumes:
+      - .:/app                 # Espelha sua pasta atual para dentro do Docker
+      - /app/node_modules      # Protege as dependências do Linux
+      - /app/.next             # Protege o build do Next
+    command: npm run dev       # Roda em modo de desenvolvimento (com atualização automática)
     depends_on:
       - backend
