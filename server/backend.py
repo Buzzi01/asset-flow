@@ -8,6 +8,7 @@ from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from routes.calendar import calendar_bp
 from routes.alerts import alerts_bp
+from flask import Flask, jsonify, request
 import logging
 
 # Importa as rotas
@@ -54,6 +55,13 @@ def initial_background_update():
         service.take_daily_snapshot()
     except Exception as e:
         print(f"⚠️ Erro na atualização inicial: {e}")
+
+@app.route('/api/update_category_meta', methods=['POST'])
+def update_category_meta():
+    data = request.json
+    service = PortfolioService()
+    result = service.update_category_meta(data.get('category'), data.get('meta'))
+    return jsonify(result)
 
 if __name__ == '__main__':
     print("🚀 AssetFlow Server (Docker Ready) Iniciando...")

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Save, Calculator } from 'lucide-react';
+import { X, Save, Calculator, Lock } from 'lucide-react'; // Adicionei o Lock
 import { Asset } from '../types';
 
 interface EditModalProps {
@@ -7,9 +7,10 @@ interface EditModalProps {
   onClose: () => void;
   onSave: () => void;
   ativo: Asset | null;
+  allAssets?: Asset[]; // 👇 1. Nova prop para receber a lista completa
 }
 
-export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) => {
+export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: EditModalProps) => {
   const [formData, setFormData] = useState({
     quantity: 0,
     average_price: 0,
@@ -20,6 +21,24 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
   });
 
   const [loading, setLoading] = useState(false);
+
+  // 👇 2. Lógica para calcular o máximo permitido
+  const getMaxAllowed = () => {
+    if (!ativo) return 100;
+    
+    // Filtra ativos do MESMO TIPO, excluindo o atual
+    const outrosDoMesmoTipo = allAssets.filter(
+      (a) => a.tipo === ativo.tipo && a.ticker !== ativo.ticker
+    );
+
+    // Soma a meta dos outros
+    const totalOcupado = outrosDoMesmoTipo.reduce((acc, a) => acc + (a.meta || 0), 0);
+
+    // O máximo é o que sobra para 100%
+    return Math.max(0, 100 - totalOcupado);
+  };
+
+  const maxLimit = getMaxAllowed();
 
   useEffect(() => {
     if (ativo) {
@@ -38,7 +57,6 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
     if (!ativo) return;
     setLoading(true);
     try {
-      // 🛠️ CORREÇÃO AQUI: A rota correta é /api/update_asset
       await fetch('http://localhost:5328/api/update_asset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,19 +127,29 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
           </div>
 
           <div className="space-y-1.5">
-             <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider flex justify-between">
+             <label className="text-[10px] uppercase font-bold text-slate-500 tracking-wider flex justify-between items-end">
                 <span>Meta na Carteira (%)</span>
-                <span className="text-blue-400">{formData.target_percent}%</span>
+                <div className="text-right flex flex-col items-end">
+                    <span className="text-blue-400">{formData.target_percent}%</span>
+                    {/* 👇 Pequeno aviso visual do limite */}
+                    <span className="text-[9px] text-slate-600 flex items-center gap-1 font-normal lowercase">
+                        <Lock size={8}/> máx: {maxLimit.toFixed(1)}%
+                    </span>
+                </div>
              </label>
+             
+             {/* 👇 3. O Slider com o MAX dinâmico */}
              <input 
-                type="range" min="0" max="100" step="0.5"
-                value={formData.target_percent}
+                type="range" min="0" 
+                max={maxLimit} // AQUI ESTÁ A TRAVA
+                step="0.5"
+                value={formData.target_percent > maxLimit ? maxLimit : formData.target_percent}
                 onChange={(e) => setFormData({...formData, target_percent: Number(e.target.value)})}
                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
              />
           </div>
 
-          {/* FUNDAMENTOS */}
+          {/* FUNDAMENTOS (Mantido idêntico) */}
           <div className="pt-4 border-t border-slate-800">
              <div className="flex items-center gap-2 mb-4">
                 <Calculator size={14} className="text-purple-400"/>

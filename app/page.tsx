@@ -3,10 +3,9 @@ import { useState } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
   Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle, 
-  Brain, Calendar, Eye, EyeOff // 👈 1. Importei os ícones
+  Brain, Calendar, Eye, EyeOff 
 } from 'lucide-react';
 import Link from 'next/link';
-// 👇 2. Importei o hook e o formatador (se não criou o formatador, use lógica inline)
 import { usePrivacy } from './context/PrivacyContext';
 import { formatMoney } from './utils'; 
 import { StatCard } from './components/StatCard';
@@ -24,7 +23,7 @@ import { AlertsButton } from './components/AlertsButton';
 export default function Home() {
   const { data, history, loading, refreshing, error, refetch } = useAssetData();
   
-  // 👇 3. Hook de Privacidade
+  // Hook de Privacidade
   const { isHidden, togglePrivacy } = usePrivacy();
 
   const [tab, setTab] = useState('Resumo');
@@ -49,7 +48,7 @@ export default function Home() {
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
 
-  // Helper local para esconder dinheiro (se não quiser mexer no utils.ts agora)
+  // Helper local para esconder dinheiro
   const money = (val: number) => isHidden ? '••••••' : formatMoney(val);
 
   const handleUpdateFundamentals = async () => {
@@ -116,7 +115,6 @@ export default function Home() {
              {/* GRUPO 2: FERRAMENTAS + OLHO */}
              <div className="flex items-center gap-2">
                 
-                {/* 👇 4. Botão de Privacidade */}
                 <button onClick={togglePrivacy} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors" title={isHidden ? "Mostrar Valores" : "Ocultar Valores"}>
                     {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -132,7 +130,7 @@ export default function Home() {
                 </button>
              </div>
 
-             {/* PATRIMÔNIO (Escondido se isHidden) */}
+             {/* PATRIMÔNIO */}
              <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2 min-w-[140px]">
                 <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Patrimônio</p>
                 <p className="text-lg font-bold text-white leading-tight">
@@ -157,11 +155,10 @@ export default function Home() {
         {tab === 'Resumo' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* KPI CARDS (Escondidos se isHidden) */}
+            {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard title="Renda Passiva Est." value={money(data?.resumo?.RendaMensal || 0)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
               <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
-              {/* Para o Lucro, a lógica é um pouco mais complexa para esconder o sinal + e a cor */}
               <StatCard 
                   title="Lucro / Prejuízo" 
                   value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} 
@@ -192,7 +189,14 @@ export default function Home() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                <div className="flex flex-col h-full"><RiskRadar alertas={data?.alertas || []} /></div>
-               <div className="lg:col-span-2 flex flex-col h-full"><CategorySummary ativos={data?.ativos || []} /></div>
+               <div className="lg:col-span-2 flex flex-col h-full">
+                 {/* Passando as props novas para permitir edição de meta */}
+                 <CategorySummary 
+                   ativos={data?.ativos || []} 
+                   categorias={data?.categorias || []} 
+                   onUpdate={() => refetch(true)} 
+                 />
+               </div>
             </div>
 
             <div className="mt-4"><MonteCarloChart /></div>
@@ -227,8 +231,6 @@ export default function Home() {
                         onViewNews={(ticker) => setNewsTicker(ticker)} 
                         index={index} 
                         total={filteredAssets.length} 
-                        // 👇 Se quiser esconder na tabela também, precisamos passar o isHidden para o AssetRow
-                        // Por enquanto, a tabela mostra valores. Se quiser esconder, me avise que ajustamos o AssetRow.tsx
                       />
                   )) : <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum ativo encontrado.</td></tr>}
                 </tbody>
@@ -237,7 +239,7 @@ export default function Home() {
           </div>
         )}
         
-        <EditModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onSave={() => refetch(true)} ativo={editingAsset} />
+        <EditModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onSave={() => refetch(true)} ativo={editingAsset} allAssets={data?.ativos || []} />
         <AddAssetModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={() => refetch(true)} />
         <AssetNewsPanel ticker={newsTicker} onClose={() => setNewsTicker(null)} />
         

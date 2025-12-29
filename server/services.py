@@ -232,8 +232,10 @@ class PortfolioService:
 
             final_list.sort(key=lambda x: x["score"], reverse=True)
             grafico = [{"name": k, "value": v} for k, v in cat_totals.items() if v > 0]
+
+            cats_data = [{"name": c.name, "meta": c.target_percent} for c in categories]
             
-            return { "status": "Sucesso", "dolar": dolar_rate, "resumo": resumo, "grafico": grafico, "alertas": alertas, "ativos": final_list }
+            return { "status": "Sucesso", "dolar": dolar_rate, "resumo": resumo, "grafico": grafico, "alertas": alertas, "ativos": final_list, "categorias": cats_data }
         finally:
             Session.remove()
 
@@ -605,6 +607,22 @@ class PortfolioService:
         except Exception as e:
             print("🔥 ERRO CRÍTICO (EXCEPTION):")
             traceback.print_exc()
+            return {"status": "Erro", "msg": str(e)}
+        finally:
+            Session.remove()
+    
+    def update_category_meta(self, category_name, new_meta):
+        print(f"📝 Atualizando Meta Categoria: {category_name} -> {new_meta}%")
+        session = Session()
+        try:
+            cat = session.query(Category).filter_by(name=category_name).first()
+            if not cat: return {"status": "Erro", "msg": "Categoria não encontrada"}
+            
+            cat.target_percent = float(new_meta)
+            session.commit()
+            return {"status": "Sucesso", "msg": "Meta atualizada!"}
+        except Exception as e:
+            session.rollback()
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
