@@ -610,88 +610,97 @@ class PortfolioService:
             Session.remove()
 
     def update_fundamentals(self):
-        print("📊 JOB: Calculando Fundamentos Reais (L12M)...")
+        print("📊 JOB: Calculando Fundamentos (L12M + Conversão USD)...")
         session = Session()
         count = 0
         try:
-            # Filtra apenas Ações e FIIs, pois ETFs/Cripto não têm LPA/VPA padrão
+            # Pega Ações, FIIs, Internacionais, ETFs e BDRs
             assets = session.query(Asset).join(Category).filter(
-                Category.name.in_(['Ação', 'FII'])
+                Category.name.in_(['Ação', 'FII', 'Internacional', 'ETF', 'BDR'])
             ).all()
 
-            # Data de corte: Hoje menos 365 dias (12 meses)
+            # Configurações de Data e Fuso
             tz = pytz.timezone("America/Sao_Paulo")
-            cutoff_date = datetime.now(tz) - timedelta(days=365)
+            cutoff_date = datetime.now(tz) - timedelta(days=365) # Últimos 12 meses
+
+            # Cotação do Dólar (para converter ativos gringos)
+            dolar_rate = self.get_usd_rate()
 
             for asset in assets:
                 try:
-                    # Monta o ticker correto (com .SA)
-                    suffix = ".SA" if not asset.ticker.endswith('.SA') else ""
+                    # Detecta se é Internacional (sem .SA e categoria Internacional)
+                    is_intl = not asset.ticker.endswith('.SA') and asset.category.name == 'Internacional'
+                    
+                    suffix = ".SA" if not asset.ticker.endswith('.SA') and not is_intl else ""
                     ticker_symbol = f"{asset.ticker}{suffix}"
                     
-                    print(f"   🔎 Analisando {ticker_symbol}...")
                     y_asset = yf.Ticker(ticker_symbol)
                     
-                    # 1. PEGAR O PREÇO ATUAL (Necessário para o cálculo)
-                    # Tenta pegar do fast_info (mais rápido e confiável para preço atual)
+                    # 1. PREÇO ATUAL (Na moeda original)
                     current_price = 0
                     if hasattr(y_asset, 'fast_info') and y_asset.fast_info.last_price:
                          current_price = y_asset.fast_info.last_price
                     else:
-                         # Fallback
-                         history = y_asset.history(period="1d")
-                         if not history.empty:
-                            current_price = history['Close'].iloc[-1]
+                         hist = y_asset.history(period="1d")
+                         if not hist.empty: current_price = hist['Close'].iloc[-1]
 
-                    if current_price <= 0:
-                        print(f"      ⚠️ Preço zerado ou não encontrado. Pulando.")
-                        continue
+                    if current_price <= 0: continue
 
-                    # 2. CALCULAR DIVIDENDOS (Lógica Manual L12M)
-                    # Baixa histórico de dividendos
+                    # 2. CÁLCULO MANUAL DE DY (L12M)
                     divs = y_asset.dividends
+                    total_divs_val = 0.0
                     
-                    # Filtra os últimos 12 meses (com tratamento de fuso horário)
-                    # Convertemos o index do pandas para timezone aware se necessário
                     if not divs.empty:
-                        if divs.index.tz is None:
-                            divs.index = divs.index.tz_localize(tz)
-                        else:
-                            divs.index = divs.index.tz_convert(tz)
+                        # Ajuste de Fuso
+                        if divs.index.tz is None: divs.index = divs.index.tz_localize(tz)
+                        else: divs.index = divs.index.tz_convert(tz)
                         
+                        # Soma últimos 12 meses
                         divs_last_12m = divs[divs.index >= cutoff_date]
                         total_divs_val = divs_last_12m.sum()
-                    else:
-                        total_divs_val = 0.0
 
-                    # O cálculo final do DY (Decimal: 0.06 para 6%)
-                    dy_calculated = total_divs_val / current_price
+                    # Se for gringo, o dividendo vem em dólar.
+                    # O preço também está em dólar.
+                    # DY = Div / Preço. A moeda cancela, a % é a mesma.
+                    dy_calculated = total_divs_val / current_price if current_price > 0 else 0
 
-                    # 3. PEGAR LPA e VPA (Yahoo Info costuma ser OK pra isso, mas tem falhas)
+                    # 3. BUSCA LPA e VPA
                     info = y_asset.info
                     lpa = info.get('trailingEps') or info.get('forwardEps') or 0
                     vpa = info.get('bookValue') or 0
-                    
+
+                    # Converte LPA/VPA se for gringo (pois no banco guardamos tudo "normalizado" ou o front espera BRL?)
+                    # O dashboard_data converte total_atual, mas metrics parece usar os valores crus.
+                    # Se guardarmos em BRL no banco, o cálculo de Graham (sqrt(22.5 * lpa * vpa)) funcionará em BRL.
+                    if is_intl:
+                        lpa *= dolar_rate
+                        vpa *= dolar_rate
+
+                    # Atualiza a POSIÇÃO (Onde guardamos os dados manuais/auto)
                     pos = session.query(Position).filter_by(asset_id=asset.id).first()
                     if pos:
+                        # Regra de Proteção: Só atualiza se o valor vindo da API for válido (!= 0)
+                        
                         if lpa != 0: pos.manual_lpa = round(lpa, 2)
                         if vpa != 0: pos.manual_vpa = round(vpa, 2)
                         
-                        # Salva o calculado, ignorando o campo 'dividendYield' bugado do Yahoo
-                        pos.manual_dy = round(dy_calculated, 4) 
+                        # Salva o DY calculado
+                        if dy_calculated > 0:
+                            pos.manual_dy = round(dy_calculated, 4)
                         
                         count += 1
-                        print(f"      💰 Preço: {current_price:.2f} | Divs 12m: R$ {total_divs_val:.2f}")
-                        print(f"      ✅ DY Calculado: {dy_calculated*100:.2f}%")
+                        print(f"   ✅ {asset.ticker}: Preço {current_price:.2f} ({'USD' if is_intl else 'BRL'}) | DY {dy_calculated*100:.2f}%")
                 
                 except Exception as e:
-                    print(f"      ⚠️ Falha em {asset.ticker}: {e}")
+                    print(f"   ⚠️ Falha em {asset.ticker}: {e}")
+                    continue
             
             session.commit()
-            return {"status": "Sucesso", "msg": f"{count} ativos recalculados com método L12M!"}
+            return {"status": "Sucesso", "msg": f"{count} ativos atualizados."}
             
         except Exception as e:
             session.rollback()
+            print(f"🔥 Erro crítico: {e}")
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()

@@ -3,17 +3,20 @@ import { useState } from 'react';
 import { Snowflake, TrendingUp, TrendingDown, Pencil, FileText, Info } from 'lucide-react';
 import { formatMoney, getStatusBg, getStatusColor } from '../utils'; 
 import { Asset } from '../types';
+import { usePrivacy } from '../context/PrivacyContext'; // 👈 Importando o hook
 
 interface AssetRowProps {
   ativo: Asset;
   tab: string;
   onEdit: (ativo: Asset) => void;
   onViewNews?: (ticker: string) => void;
-  index: number; // 👈 Nova prop
-  total: number; // 👈 Nova prop
+  index: number; 
+  total: number; 
 }
 
 export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: AssetRowProps) => {
+  const { isHidden } = usePrivacy(); // 👈 Pegando o estado global
+
   const percentualDaMeta = ativo.meta > 0 ? (ativo.pct_na_categoria / ativo.meta) * 100 : 0;
   const barraWidth = Math.min(percentualDaMeta, 100);
   const isOverweight = ativo.pct_na_categoria > ativo.meta;
@@ -39,11 +42,12 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
       return 'bg-blue-400';
   };
 
-  // 📐 LÓGICA ANTI-CORTE
-  // Se for um dos 3 últimos itens da lista, abre o card para CIMA (bottom-8)
-  // Caso contrário, abre para BAIXO (top-7)
   const isBottomRow = total > 3 && index >= total - 3;
   const tooltipPositionClass = isBottomRow ? 'bottom-8' : 'top-7';
+
+  const isUSD = (ativo as any).currency === 'USD';
+  const displayPrice = isUSD ? `$ ${ativo.preco_atual.toFixed(2)}` : formatMoney(ativo.preco_atual);
+  const displayPM = isUSD ? `$ ${ativo.pm.toFixed(2)}` : formatMoney(ativo.pm);
 
   return (
     <tr className="hover:bg-slate-800/40 transition-colors border-b border-slate-800/50 last:border-0 group text-xs sm:text-sm">
@@ -74,7 +78,10 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                     )}
                 </div>
             </div>
-            <div className="text-[10px] text-slate-500 uppercase font-medium tracking-wide">{ativo.tipo} • {ativo.qtd} UN</div>
+            {/* Esconde a quantidade de cotas também? Geralmente sim para privacidade total, mas deixei opcional */}
+            <div className="text-[10px] text-slate-500 uppercase font-medium tracking-wide">
+                {ativo.tipo} • {isHidden ? '•••' : ativo.qtd} UN
+            </div>
           </div>
         </div>
       </td>
@@ -82,16 +89,24 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
       {/* 2. POSIÇÃO */}
       <td className="p-4 text-right">
         <div className="flex flex-col items-end">
-            <span className="text-slate-200 font-bold">{formatMoney(ativo.total_atual)}</span>
-            <span className="text-[10px] text-slate-500">Investido: {formatMoney(ativo.total_investido)}</span>
+            <span className="text-slate-200 font-bold">
+                {isHidden ? '••••••' : formatMoney(ativo.total_atual)}
+            </span>
+            <span className="text-[10px] text-slate-500">
+                Investido: {isHidden ? '••••••' : formatMoney(ativo.total_investido)}
+            </span>
         </div>
       </td>
 
       {/* 3. PREÇO */}
       <td className="p-4 text-right hidden sm:table-cell">
         <div className="flex flex-col items-end">
-            <span className="text-slate-300 font-mono">{formatMoney(ativo.preco_atual)}</span>
-            <span className="text-[10px] text-slate-600">PM: {formatMoney(ativo.pm)}</span>
+            <span className="text-slate-300 font-mono">
+                {isHidden ? '••••••' : displayPrice}
+            </span>
+            <span className="text-[10px] text-slate-600">
+                PM: {isHidden ? '••••••' : displayPM}
+            </span>
         </div>
       </td>
 
@@ -99,11 +114,17 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
       <td className="p-4 text-right">
         <div className="flex flex-col items-end">
             <span className={`font-bold font-mono ${lucroPositivo ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {lucroPositivo ? '+' : ''}{formatMoney(ativo.lucro_valor)}
+                {isHidden ? '••••••' : (lucroPositivo ? '+' : '') + formatMoney(ativo.lucro_valor)}
             </span>
             <div className={`text-[10px] flex items-center gap-1 ${lucroPositivo ? 'text-emerald-500/70' : 'text-rose-500/70'}`}>
-                {lucroPositivo ? <TrendingUp size={10}/> : <TrendingDown size={10}/>} 
-                {ativo.lucro_pct.toFixed(2)}%
+                {isHidden ? (
+                    <span className="text-slate-600">•••%</span>
+                ) : (
+                    <>
+                        {lucroPositivo ? <TrendingUp size={10}/> : <TrendingDown size={10}/>} 
+                        {ativo.lucro_pct.toFixed(2)}%
+                    </>
+                )}
             </div>
         </div>
       </td>
@@ -124,18 +145,17 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
         </div>
       </td>
 
-      {/* 6. APORTE & INSIGHTS (COM FIX DE SCROLL) */}
+      {/* 6. APORTE & INSIGHTS */}
       <td className="p-4 text-right">
         <div className="flex flex-col items-end gap-1.5">
           {ativo.falta_comprar > 1 ? (
             <span className="text-blue-300 font-bold bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20 text-xs whitespace-nowrap shadow-sm shadow-blue-900/20">
-                +{formatMoney(ativo.falta_comprar)}
+                {isHidden ? '••••••' : `+${formatMoney(ativo.falta_comprar)}`}
             </span>
           ) : (
             <span className="text-slate-700 text-[10px] font-medium">-</span>
           )}
           
-          {ativo.status !== 'MANTER' && ativo.status !== 'NEUTRO' && (
              <div className="group/tooltip relative inline-block">
                  {/* Badge */}
                  <div className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border uppercase font-bold cursor-help transition-all hover:brightness-110 ${getStatusColor(ativo.status)}`}>
@@ -143,11 +163,8 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                     <Info size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
                  </div>
                  
-                 {/* ✨ CARD FLUTUANTE INTELIGENTE ✨ */}
-                 {/* A classe tooltipPositionClass define se vai para cima ou para baixo */}
+                 {/* CARD FLUTUANTE */}
                  <div className={`absolute right-0 ${tooltipPositionClass} z-50 w-64 p-0 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-left hidden group-hover/tooltip:block pointer-events-none animate-in fade-in zoom-in-95 duration-200`}>
-                    
-                    {/* Header */}
                     <div className="bg-slate-800/80 px-3 py-2 border-b border-slate-700 rounded-t-lg flex justify-between items-center backdrop-blur-sm">
                         <span className="text-[10px] font-bold text-slate-200 flex items-center gap-1">
                            📊 Análise de {ativo.ticker}
@@ -157,7 +174,6 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                         </span>
                     </div>
                     
-                    {/* Lista */}
                     <div className="p-3 space-y-2.5">
                         {motivosLista.length > 0 ? motivosLista.map((m, i) => (
                             <div key={i} className="text-[10px] text-slate-300 flex items-start gap-2 leading-relaxed">
@@ -167,7 +183,6 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                         )) : <span className="text-[10px] text-slate-500 italic">Apenas rebalanceamento de carteira.</span>}
                     </div>
 
-                    {/* RSI */}
                     {ativo.rsi !== undefined && (
                         <div className="px-3 pb-3 pt-2 border-t border-slate-800/80 bg-slate-800/30 rounded-b-lg">
                            <div className="flex justify-between items-center mb-1.5">
@@ -191,7 +206,6 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                     )}
                  </div>
              </div>
-          )}
         </div>
       </td>
 
@@ -211,7 +225,7 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                      {magicNumber > 0 && (
                          <div className={`text-[10px] flex items-center gap-1 justify-end w-full px-1 ${atingiuMagic ? 'text-cyan-400 font-bold' : 'text-slate-600'}`} title="Progresso Magic Number">
                             <Snowflake size={10} className={atingiuMagic ? "animate-pulse" : ""}/> 
-                            <span>{ativo.qtd}/{magicNumber}</span>
+                            <span>{isHidden ? '•••' : ativo.qtd}/{magicNumber}</span>
                          </div>
                      )}
                  </div>

@@ -5,6 +5,11 @@ export const formatMoney = (v: number) => {
   return v?.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) || 'R$ 0,00';
 };
 
+export const formatMoneyPrivate = (value: number, isHidden: boolean) => {
+  if (isHidden) return '••••••';
+  return formatMoney(value);
+};
+
 export const getStatusColor = (status: string) => {
   switch (status) {
     case 'COMPRA_FORTE':

@@ -2,21 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceArea 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+// 👇 1. Importar o contexto
+import { usePrivacy } from '../context/PrivacyContext';
 
 export default function MonteCarloChart() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ vol: '', retorno: '' });
+  
+  // 👇 2. Pegar o estado de privacidade
+  const { isHidden } = usePrivacy();
 
   useEffect(() => {
     fetch('/api/simulation')
       .then(res => res.json())
       .then(d => {
         if (d.status === 'Sucesso') {
-          // Transformar os dados para o formato do Recharts
-          // d.projecao.medio é um array. Vamos criar objetos { dia: 1, medio: 100, etc }
           const formattedData = d.projecao.medio.map((_: any, index: number) => ({
             dia: index,
             pior: d.projecao.pior_caso[index],
@@ -48,6 +51,8 @@ export default function MonteCarloChart() {
         </div>
         <div className="text-right">
             <p className="text-xs text-slate-500 uppercase font-bold">Volatilidade Anual</p>
+            {/* Volatilidade é porcentagem, não revela patrimônio, então mantive visível. 
+                Se quiser esconder, coloque: {isHidden ? '•••' : stats.vol} */}
             <p className="text-2xl font-mono text-yellow-400">{stats.vol}</p>
         </div>
       </div>
@@ -63,17 +68,19 @@ export default function MonteCarloChart() {
             />
             <YAxis 
                 stroke="#94a3b8" 
-                tickFormatter={(val) => `R$${(val/1000).toFixed(0)}k`}
+                // 👇 3. Esconde o Eixo Y
+                tickFormatter={(val) => isHidden ? '••••' : `R$${(val/1000).toFixed(0)}k`}
                 domain={['auto', 'auto']}
+                width={isHidden ? 40 : 60} // Ajusta largura para não ficar estranho
             />
             <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
-                formatter={(val: number) => [`R$ ${val.toFixed(2)}`, '']}
+                // 👇 4. Esconde o valor do Tooltip (mouse over)
+                formatter={(val: number) => [isHidden ? '••••••' : `R$ ${val.toFixed(2)}`, '']}
                 labelFormatter={(label) => `Dia ${label}`}
             />
             <Legend />
             
-            {/* Melhor Caso (Verde) */}
             <Line 
                 type="monotone" 
                 dataKey="melhor" 
@@ -82,8 +89,6 @@ export default function MonteCarloChart() {
                 strokeWidth={2} 
                 dot={false} 
             />
-            
-            {/* Caso Médio (Azul/Branco) */}
             <Line 
                 type="monotone" 
                 dataKey="medio" 
@@ -92,8 +97,6 @@ export default function MonteCarloChart() {
                 strokeWidth={3} 
                 dot={false} 
             />
-            
-            {/* Pior Caso (Vermelho) */}
             <Line 
                 type="monotone" 
                 dataKey="pior" 

@@ -62,5 +62,8 @@ if __name__ == '__main__':
     boot_thread.daemon = True 
     boot_thread.start()
     
-    # Host 0.0.0.0 é obrigatório para funcionar dentro do Docker
-    app.run(host='0.0.0.0', port=5328, debug=False, use_reloader=False)
+    # 🛠️ CORREÇÃO: Permite que o FLASK_DEBUG do docker-compose controle o reloader
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
+    
+    # Se estiver em debug, ativamos o reloader.
+    app.run(host='0.0.0.0', port=5328, debug=debug_mode, use_reloader=debug_mode)

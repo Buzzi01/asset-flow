@@ -27,7 +27,7 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
         quantity: ativo.qtd || 0,
         average_price: ativo.pm || 0,
         target_percent: ativo.meta || 0,
-        manual_dy: Number(((ativo.manual_dy || 0) * 100).toFixed(2)), // 👈 CONVERTE PARA % AO ABRIR (0.10 -> 10.0)
+        manual_dy: Number(((ativo.manual_dy || 0) * 100).toFixed(2)), 
         manual_lpa: ativo.manual_lpa || 0,
         manual_vpa: ativo.manual_vpa || 0
       });
@@ -38,7 +38,8 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
     if (!ativo) return;
     setLoading(true);
     try {
-      await fetch('http://localhost:5328/api/assets/update', {
+      // 🛠️ CORREÇÃO AQUI: A rota correta é /api/update_asset
+      await fetch('http://localhost:5328/api/update_asset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -46,7 +47,6 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
           qtd: Number(formData.quantity),
           pm: Number(formData.average_price),
           meta: Number(formData.target_percent),
-          // 👇 CONVERTE DE VOLTA PARA DECIMAL AO SALVAR (10.0 -> 0.10)
           dy: Number(formData.manual_dy) / 100, 
           lpa: Number(formData.manual_lpa),
           vpa: Number(formData.manual_vpa)
@@ -130,7 +130,6 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo }: EditModalProps) =>
              
              <div className="grid grid-cols-3 gap-3">
                  <div className="space-y-1.5">
-                    {/* 👇 LABEL CORRIGIDA PARA % */}
                     <label className="text-[9px] uppercase font-bold text-slate-500">DY Anual (%)</label>
                     <input 
                       type="number" step="0.1"

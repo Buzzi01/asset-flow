@@ -1,5 +1,5 @@
 services:
-  # --- BACKEND (Python) ---
+  # --- BACKEND (Python / Flask) ---
   backend:
     build:
       context: .
@@ -9,13 +9,18 @@ services:
     ports:
       - "5328:5328"
     volumes:
-      # 👇 Mapeia a pasta server. Alterou Python? Reinicia só o container rapidinho.
       - ./server:/app/server
       - ./assetflow.db:/app/server/assetflow.db
       - ./backups:/app/backups
     environment:
-      - FLASK_ENV=development  # Ativa modo debug/reload no Flask
+      - FLASK_ENV=development
       - FLASK_DEBUG=1
+
+    # 🔒 LIMITES
+    mem_limit: 2g
+    cpus: 1.0
+    tmpfs:
+      - /tmp:size=128m
 
   # --- FRONTEND (Next.js) ---
   frontend:
@@ -26,12 +31,17 @@ services:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:5328
-    # 👇 O PULO DO GATO (Hot Reload)
+      - WATCHPACK_POLLING=true
     volumes:
-      - .:/app                 # Espelha sua pasta atual para dentro do Docker
-      - /app/node_modules      # Protege as dependências do Linux (não apague essa linha!)
-      - /app/.next             # Protege o build cache
-    # 👇 Força rodar em modo desenvolvimento
+      - .:/app
+      - /app/node_modules
+      - /app/.next
     command: npm run dev
     depends_on:
       - backend
+
+    # 🔒 LIMITES
+    mem_limit: 1.5g
+    cpus: 1.0
+    tmpfs:
+      - /tmp:size=128m
