@@ -1,3 +1,4 @@
+# server/routes/assets.py
 from flask import Blueprint, jsonify, request
 from pydantic import BaseModel, Field, ValidationError
 import sys
@@ -13,26 +14,25 @@ service = PortfolioService()
 class AssetInput(BaseModel):
     ticker: str = Field(..., min_length=1, strip_whitespace=True)
     category: str = Field(..., min_length=1)
-    qtd: float = Field(ge=0, default=0) # ge=0 significa "Greater or Equal to 0"
+    qtd: float = Field(ge=0, default=0)
     pm: float = Field(ge=0, default=0)
+    meta: float = Field(ge=0, default=0) # 👈 Adicionado campo META
 
 class UpdateInput(BaseModel):
     ticker: str
     qtd: float = Field(ge=0)
     pm: float = Field(ge=0)
-    meta: float = Field(ge=0, le=100, default=0) # Meta entre 0 e 100%
+    meta: float = Field(ge=0, le=100, default=0)
     dy: float = Field(default=0)
     lpa: float = Field(default=0)
     vpa: float = Field(default=0)
+    manual_price: float = Field(default=None)
 
 # --- Rotas ---
-
-# No final de server/routes/assets.py
 
 @assets_bp.route('/api/simulation')
 def simulation():
     try:
-        # Chama a simulação que criamos no services.py
         result = service.run_monte_carlo_simulation()
         return jsonify(result)
     except Exception as e:
@@ -41,19 +41,18 @@ def simulation():
 @assets_bp.route('/api/add_asset', methods=['POST'])
 def add_asset():
     try:
-        # Validação automática aqui:
+        # Validação automática com Pydantic
         body = AssetInput(**request.json)
         
-        # Se passou, acessamos via body.campo
         result = service.add_new_asset(
             body.ticker.upper(), 
             body.category, 
             body.qtd, 
-            body.pm
+            body.pm,
+            body.meta # 👈 Passando a meta para o serviço
         )
         
         if result["status"] == "Sucesso":
-             # Executa update em background se possível, ou síncrono
              try: service.update_prices(); service.take_daily_snapshot()
              except: pass
              
@@ -69,9 +68,16 @@ def update_asset():
     try:
         body = UpdateInput(**request.json)
         
+        # 👇 2. Passamos o manual_price para o serviço
         result = service.update_position(
-            body.ticker, body.qtd, body.pm, body.meta, 
-            body.dy, body.lpa, body.vpa
+            ticker=body.ticker, 
+            qtd=body.qtd, 
+            pm=body.pm, 
+            meta=body.meta, 
+            dy=body.dy, 
+            lpa=body.lpa, 
+            vpa=body.vpa,
+            current_price=body.manual_price # <--- Passando aqui
         )
         
         if result["status"] == "Sucesso":
@@ -85,17 +91,12 @@ def update_asset():
 
 @assets_bp.route('/api/delete_asset', methods=['POST'])
 def delete_asset():
-    try:
-        data = request.json
-        ticker = data.get('ticker')
-        
-        if not ticker:
-            return jsonify({"status": "Erro", "msg": "Ticker não informado"}), 400
-
-        # Chama a função que você editou no services.py
-        result = service.delete_asset(ticker)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        return jsonify({"status": "Erro", "msg": str(e)}), 500
+    data = request.json
+    asset_id = data.get('id')
+    
+    if not asset_id:
+        return jsonify({"status": "Erro", "msg": "ID não informado"})
+    
+    service = PortfolioService()
+    result = service.delete_asset(asset_id)
+    return jsonify(result)

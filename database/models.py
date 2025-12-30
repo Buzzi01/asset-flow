@@ -1,8 +1,17 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, Date
+from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime, Date, event
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.engine import Engine # Importante para o evento
 from datetime import datetime
 
 Base = declarative_base()
+
+# 👇 1. O SEGREDO: Isso liga o "Fiscal" do SQLite
+# Toda vez que conectar no banco, ele ativa a regra de Cascata.
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 class Category(Base):
     __tablename__ = 'categories'
@@ -17,31 +26,41 @@ class Asset(Base):
     ticker = Column(String, unique=True, nullable=False)
     name = Column(String)
     currency = Column(String, default="BRL")
-    category_id = Column(Integer, ForeignKey('categories.id'))
+    category_id = Column(Integer, ForeignKey('categories.id'), nullable=False) # Categoria é obrigatória
+    
     category = relationship("Category", back_populates="assets")
-    position = relationship("Position", uselist=False, back_populates="asset")
-    market_data = relationship("MarketData", back_populates="asset")
+    
+    # O Cascade aqui instrui o SQLAlchemy (Python)
+    position = relationship("Position", uselist=False, back_populates="asset", cascade="all, delete-orphan")
+    market_data = relationship("MarketData", back_populates="asset", cascade="all, delete-orphan")
 
 class Position(Base):
     __tablename__ = 'positions'
     id = Column(Integer, primary_key=True)
-    asset_id = Column(Integer, ForeignKey('assets.id'), unique=True)
+    
+    # 👇 2. PROIBIR ORFÃOS: nullable=False obriga a ter um pai.
+    # ondelete="CASCADE" instrui o Banco de Dados (SQL)
+    asset_id = Column(Integer, ForeignKey('assets.id', ondelete="CASCADE"), unique=True, nullable=False)
+    
     quantity = Column(Float, default=0.0)
     average_price = Column(Float, default=0.0)
     target_percent = Column(Float, default=0.0)
     manual_lpa = Column(Float, nullable=True)
     manual_vpa = Column(Float, nullable=True)
     manual_dy = Column(Float, nullable=True)
+    
     asset = relationship("Asset", back_populates="position")
 
 class MarketData(Base):
     __tablename__ = 'market_data'
     id = Column(Integer, primary_key=True)
-    asset_id = Column(Integer, ForeignKey('assets.id'))
+    
+    # 👇 Mesma proteção aqui: Se o ativo sumir, o histórico deleta junto
+    asset_id = Column(Integer, ForeignKey('assets.id', ondelete="CASCADE"), nullable=False)
+    
     date = Column(Date, default=datetime.now)
     price = Column(Float)
     min_6m = Column(Float)
-    # Colunas de Inteligência Técnica
     rsi_14 = Column(Float, nullable=True)
     sma_20 = Column(Float, nullable=True)
     

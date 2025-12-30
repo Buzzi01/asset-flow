@@ -63,6 +63,66 @@ def update_category_meta():
     result = service.update_category_meta(data.get('category'), data.get('meta'))
     return jsonify(result)
 
+# 👇 Adicione logo após os imports ou junto com as outras rotas
+@app.route('/api/validate_ticker', methods=['POST'])
+def validate_ticker():
+    data = request.json
+    ticker = data.get('ticker', '').strip()
+    
+    if not ticker:
+        return jsonify({"valid": False, "msg": "Ticker vazio"})
+    
+    service = PortfolioService()
+    result = service.validate_ticker_on_yahoo(ticker)
+    
+    # 👇 A MUDANÇA MÁGICA:
+    # Se o Yahoo disse que não existe (valid=False), nós aprovamos mesmo assim!
+    if not result['valid']:
+        return jsonify({
+            "valid": True, 
+            "ticker": ticker.upper(), 
+            "manual": True, 
+            "msg": "Ativo não encontrado no Yahoo. Será cadastrado como Manual."
+        })
+    
+    return jsonify(result)
+
+@app.route('/api/simulation', methods=['GET'])
+def simulation():
+    service = PortfolioService()
+    # Chama a função matemática que já existe no services.py
+    result = service.run_monte_carlo_simulation()
+    return jsonify(result)
+
+# Adicione ao server/backend.py
+
+@app.route('/api/cleanup_trash', methods=['GET'])
+def cleanup_trash():
+    from services import Session, Position
+    session = Session()
+    try:
+        # Busca todas as posições
+        positions = session.query(Position).all()
+        deleted_count = 0
+        
+        for pos in positions:
+            # Se não tem ativo associado, é lixo
+            if pos.asset is None:
+                print(f"🧹 Faxina: Deletando Posição Órfã ID {pos.id}")
+                session.delete(pos)
+                deleted_count += 1
+        
+        session.commit()
+        return jsonify({
+            "status": "Sucesso", 
+            "msg": f"Faxina concluída! {deleted_count} itens órfãos foram removidos do banco."
+        })
+    except Exception as e:
+        session.rollback()
+        return jsonify({"status": "Erro", "msg": str(e)})
+    finally:
+        session.close()
+
 if __name__ == '__main__':
     print("🚀 AssetFlow Server (Docker Ready) Iniciando...")
     

@@ -37,3 +37,10 @@ def trigger_fundamentals():
     service = PortfolioService()
     result = service.update_fundamentals()
     return jsonify(result)
+
+@dashboard_bp.route('/api/simulation', methods=['GET'])
+def simulation():
+    service = PortfolioService()
+    # Chama a função que já existe no services.py
+    result = service.run_monte_carlo_simulation()
+    return jsonify(result)
