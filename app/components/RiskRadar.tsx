@@ -4,14 +4,12 @@ import {
   Sparkles, 
   Scale, 
   Anchor, 
-  TrendingUp, 
   ShieldCheck, 
   Activity 
 } from 'lucide-react';
 
 export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
   
-  // Função que analisa o texto do alerta e define o ícone e a cor
   const analyzeAlert = (text: string) => {
     const t = text.toLowerCase();
 
@@ -65,7 +63,7 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
   return (
     <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-500">
       
-      {/* Cabeçalho Bonito */}
+      {/* Cabeçalho */}
       <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded bg-purple-500/10 border border-purple-500/20">
@@ -78,10 +76,18 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
         </span>
       </div>
       
-      {/* Lista de Cards */}
-      <div className="p-4 space-y-3 overflow-y-auto custom-scrollbar flex-1">
+      {/* 👇 LISTA COM SCROLL CUSTOMIZADO
+         Adicionei as classes [&::-webkit-scrollbar] para estilizar a barra
+      */}
+      <div className="p-4 space-y-3 overflow-y-auto max-h-[400px] pr-2 
+        [&::-webkit-scrollbar]:w-1.5
+        [&::-webkit-scrollbar-track]:bg-slate-800/40
+        [&::-webkit-scrollbar-thumb]:bg-slate-600/80
+        [&::-webkit-scrollbar-thumb]:rounded-full
+        hover:[&::-webkit-scrollbar-thumb]:bg-slate-500"
+      >
         {alertas.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 py-10 opacity-60">
+          <div className="flex flex-col items-center justify-center py-10 text-slate-500 gap-3 opacity-60">
             <ShieldCheck size={48} strokeWidth={1} />
             <p className="text-xs font-medium">Nenhum alerta relevante no momento.</p>
           </div>
@@ -96,25 +102,19 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
                 className={`relative p-3 rounded-xl border ${style.bg} ${style.border} group hover:brightness-110 transition-all duration-300`}
               >
                 <div className="flex items-start gap-3">
-                  {/* Ícone com brilho */}
                   <div className={`p-2 rounded-lg bg-slate-900/50 border border-white/5 shadow-sm shrink-0 ${style.color}`}>
                     <Icon size={18} />
                   </div>
 
                   <div className="flex flex-col gap-0.5">
-                    {/* Label do Tipo */}
                     <span className={`text-[9px] font-bold uppercase tracking-wider opacity-70 ${style.color}`}>
                       {style.label}
                     </span>
-                    
-                    {/* Mensagem Principal */}
                     <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                      {alerta.replace(/⚠️|💎|📈|📉|⚖️/g, '').trim()} {/* Remove emojis antigos do texto se houver */}
+                      {alerta.replace(/⚠️|💎|📈|📉|⚖️/g, '').trim()}
                     </p>
                   </div>
                 </div>
-
-                {/* Efeito de brilho no hover */}
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-500" />
               </div>
             );
