@@ -38,7 +38,6 @@ class PortfolioService:
             print(f"⚠️ Erro ao buscar Dólar: {e}")
         return 5.80 
 
-    # --- CÁLCULOS TÉCNICOS ---
     def _calculate_rsi(self, series, period=14):
         if len(series) < period + 1: return 50.0
         delta = series.diff()
@@ -52,53 +51,58 @@ class PortfolioService:
         if len(series) < window: return float(series.mean())
         return float(series.rolling(window=window).mean().iloc[-1])
 
+    # server/services.py
+# ... (mantenha os imports e o início da classe iguais)
+
     def update_prices(self):
-        print("🔄 JOB: Atualizando Preços & Inteligência Técnica...")
+        print("🔄 JOB: Atualizando Preços...", flush=True)
         session = Session()
         try:
             assets = session.query(Asset).filter(Asset.ticker != 'Nubank Caixinha').all()
             tickers_map = {}; download_list = []
 
             for asset in assets:
-                suffix = ".SA" if asset.category.name in ['Ação', 'FII', 'Renda Fixa', 'ETF'] and not asset.ticker.endswith('.SA') else ""
-                symbol = f"{asset.ticker}{suffix}"
+                ticker_raw = asset.ticker.strip().upper()
+                
+                # REGRA 2: Se tiver mais de 7 caracteres ou espaço, é manual.
+                if len(ticker_raw) > 7 or " " in ticker_raw:
+                    print(f"   ℹ️ {ticker_raw} ignorado (Regra: Manual/Longo)", flush=True)
+                    continue
+
+                # REGRA 3: Preparação para validar na bolsa (Yahoo)
+                # Adicionamos .SA para ativos que não são Internacionais
+                is_intl = asset.category and asset.category.name == 'Internacional'
+                symbol = ticker_raw if is_intl or ticker_raw.endswith('.SA') else f"{ticker_raw}.SA"
+                
                 tickers_map[symbol] = asset
                 download_list.append(symbol)
 
             if not download_list:
                 return
 
-            print(f"   ⬇️ Baixando histórico (2 meses) para {len(download_list)} ativos...")
-            try:
-                batch_data = yf.download(download_list, period="2mo", group_by='ticker', threads=True, progress=False, auto_adjust=True)
-            except Exception as e:
-                print(f"❌ Erro crítico no download: {e}")
-                return
+            # REGRA 3 (Continuação): O yfinance valida se existe. 
+            # Se não existir na bolsa, ele retorna um erro ou DataFrame vazio.
+            batch_data = yf.download(download_list, period="2mo", group_by='ticker', threads=True, progress=False, auto_adjust=True)
 
             count_ok = 0
-            
             for symbol, asset in tickers_map.items():
                 try:
+                    # Verifica se o Yahoo retornou dados para este ticker
                     hist = pd.DataFrame()
                     if len(download_list) == 1:
-                        if isinstance(batch_data, pd.DataFrame) and 'Close' in batch_data.columns:
-                            hist = batch_data
+                        hist = batch_data
                     else:
                         if symbol in batch_data.columns:
                             hist = batch_data[symbol]
-                        elif 'Close' in batch_data.columns and symbol in batch_data['Close'].columns:
-                            hist = pd.DataFrame({'Close': batch_data['Close'][symbol]})
                     
                     hist = hist.dropna(how='all')
-                    if hist.empty or 'Close' not in hist.columns: continue
+                    
+                    # Se o Yahoo não encontrou (Regra 3), pulamos silenciosamente
+                    if hist.empty or 'Close' not in hist.columns:
+                        continue
 
-                    close_series = hist['Close']
-                    current_price = float(close_series.iloc[-1])
-                    min_6m = float(close_series.min())
-
-                    rsi = self._calculate_rsi(close_series, 14)
-                    sma20 = self._calculate_sma(close_series, 20)
-
+                    # Se chegou aqui, o ativo existe na bolsa e é automático
+                    current_price = float(hist['Close'].iloc[-1])
                     mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                     if not mdata:
                         mdata = MarketData(asset_id=asset.id)
@@ -106,23 +110,16 @@ class PortfolioService:
                     
                     mdata.price = current_price
                     mdata.date = datetime.now()
-                    mdata.rsi_14 = rsi
-                    mdata.sma_20 = sma20
-                    
-                    if mdata.min_6m is None or min_6m < mdata.min_6m:
-                         mdata.min_6m = min_6m
-
                     count_ok += 1
 
-                except Exception as e:
-                    print(f"   ❌ Erro processando {asset.ticker}: {e}")
+                except Exception:
+                    continue
 
             session.commit()
-            print(f"🏁 Fim do JOB. Atualizados: {count_ok}/{len(download_list)}")
-        
+            print(f"🏁 Atualizados: {count_ok} ativos de bolsa.", flush=True)
         except Exception as e:
             session.rollback()
-            print(f"❌ Erro Geral no Update: {e}")
+            print(f"❌ Erro: {e}")
         finally:
             Session.remove()
 
@@ -140,12 +137,9 @@ class PortfolioService:
 
             for pos in positions:
                 asset = pos.asset
-                
-                # 👇 CORREÇÃO CRÍTICA (BLINDAGEM CONTRA ERRO 500)
-                if not asset:
-                    continue 
-                # 👆 Se o ativo for None (deletado incorretamente antes), ele pula e não trava o site.
+                if not asset: continue 
 
+                # Busca o MarketData (Preço Atual)
                 mdata = asset.market_data[0] if asset.market_data else None
                 try:
                     qtd = float(pos.quantity or 0)
@@ -205,7 +199,7 @@ class PortfolioService:
                      alertas.append(f"📉 MÍNIMA: {pos.asset.ticker} no fundo de 6 meses")
 
                 final_list.append({
-                    "id": pos.asset.id, # IMPORTANTE: O ID para o botão de deletar funcionar
+                    "id": pos.asset.id, 
                     "ticker": pos.asset.ticker,
                     "tipo": cat_name,
                     "qtd": pos.quantity,
@@ -229,7 +223,6 @@ class PortfolioService:
 
             final_list.sort(key=lambda x: x["score"], reverse=True)
             grafico = [{"name": k, "value": v} for k, v in cat_totals.items() if v > 0]
-
             cats_data = [{"name": c.name, "meta": c.target_percent} for c in categories]
             
             return { "status": "Sucesso", "dolar": dolar_rate, "resumo": resumo, "grafico": grafico, "alertas": alertas, "ativos": final_list, "categorias": cats_data }
@@ -260,7 +253,6 @@ class PortfolioService:
     def _apply_strategy(self, pos, metrics, falta, preco, min_6m):
         score = 0
         motivos = []
-        
         if falta > 0: 
             score += 40
             motivos.append("⚖️ Abaixo da Meta (Rebalancear)")
@@ -297,8 +289,9 @@ class PortfolioService:
                 motivos.append("❄️ Efeito Bola de Neve Ativo")
 
         rsi = 50
-        if pos.asset.market_data and len(pos.asset.market_data) > 0:
-            rsi = pos.asset.market_data[0].rsi_14 or 50
+        mdata = pos.asset.market_data[0] if pos.asset.market_data else None
+        if mdata:
+            rsi = mdata.rsi_14 or 50
         
         if rsi < 30:
             score += 25
@@ -351,7 +344,7 @@ class PortfolioService:
             dolar_rate = self.get_usd_rate()
             for pos in positions:
                 asset = pos.asset
-                if not asset: continue # Blindagem aqui também
+                if not asset: continue 
                 
                 mdata = asset.market_data[0] if asset.market_data else None
                 try:
@@ -398,7 +391,6 @@ class PortfolioService:
             asset = session.query(Asset).filter_by(ticker=ticker).first()
             if not asset: return {"status": "Erro", "msg": "Ativo não encontrado"}
             
-            # 1. Atualiza a POSIÇÃO (Seus dados de compra)
             pos = session.query(Position).filter_by(asset_id=asset.id).first()
             if not pos:
                 pos = Position(asset_id=asset.id)
@@ -411,18 +403,14 @@ class PortfolioService:
             pos.manual_lpa = float(lpa)
             pos.manual_vpa = float(vpa)
             
-            # 2. Atualiza o PREÇO ATUAL (Market Data)
-            # Isso permite definir quanto vale HOJE, ignorando o Yahoo
             if current_price is not None and str(current_price).strip() != "":
                 mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                 if not mdata:
                     mdata = MarketData(asset_id=asset.id)
                     session.add(mdata)
                 
-                # Atualiza preço e data para "agora"
                 mdata.price = float(current_price)
                 mdata.date = datetime.now()
-                # Zera os indicadores técnicos já que é manual
                 mdata.min_6m = float(current_price) 
                 
             session.commit()
@@ -433,7 +421,6 @@ class PortfolioService:
         finally:
             Session.remove()
         
-    # 👇 CORREÇÃO: Adicionamos o parâmetro meta=0
     def add_new_asset(self, ticker, category_name, qtd, pm, meta=0):
         ticker = ticker.upper().strip().replace(".SA", "")
         print(f"🆕 Criando Ativo: {ticker}")
@@ -450,12 +437,11 @@ class PortfolioService:
             session.add(new_asset)
             session.flush()
             
-            # 👇 Salva a META junto com a posição
             pos = Position(
                 asset_id=new_asset.id, 
                 quantity=float(qtd), 
                 average_price=float(pm),
-                target_percent=float(meta) # Salvando a meta inicial
+                target_percent=float(meta) 
             )
             session.add(pos)
             
@@ -469,36 +455,18 @@ class PortfolioService:
     def delete_asset(self, asset_id):
         session = Session()
         try:
-            print(f"🗑️ FORCE DELETE: Iniciando exclusão do Ativo ID: {asset_id}")
-            
-            # 1. Verifica se o ativo existe
             asset = session.query(Asset).filter_by(id=asset_id).first()
-            if not asset:
-                return {"status": "Erro", "msg": "Ativo não encontrado"}
+            if not asset: return {"status": "Erro", "msg": "Ativo não encontrado"}
             
-            # 2. APAGA OS FILHOS MANUALMENTE (Ignora a regra do banco)
-            # Isso garante que não sobra linha NULL, independente da config do DB.
-            
-            # Apaga Posições vinculadas
-            qtd_pos = session.query(Position).filter_by(asset_id=asset_id).delete()
-            print(f"   - Posições removidas: {qtd_pos}")
-            
-            # Apaga Histórico de Preços (MarketData) vinculado
-            qtd_md = session.query(MarketData).filter_by(asset_id=asset_id).delete()
-            print(f"   - Histórico removido: {qtd_md}")
-            
-            # 3. Finalmente, apaga o Pai (Ativo)
+            session.query(Position).filter_by(asset_id=asset_id).delete()
+            session.query(MarketData).filter_by(asset_id=asset_id).delete()
             session.delete(asset)
             session.commit()
-            
             return {"status": "Sucesso", "msg": "Ativo e dados vinculados excluídos!"}
-            
         except Exception as e:
             session.rollback()
-            print(f"❌ Erro ao deletar: {e}")
             return {"status": "Erro", "msg": str(e)}
-        finally:
-            Session.remove()
+        finally: Session.remove()
 
     def run_monte_carlo_simulation(self, days=252, simulations=1000):
         print("🎲 --- INICIANDO MONTE CARLO ---")
@@ -510,20 +478,17 @@ class PortfolioService:
             total_value = 0.0
             
             for pos in positions:
-                # Blindagem contra órfãos
                 if not pos.asset: continue
-
                 if pos.asset.category.name in ['Ação', 'FII', 'ETF', 'Internacional']:
                     price = 0.0
-                    if pos.asset.market_data and len(pos.asset.market_data) > 0:
-                        price = float(pos.asset.market_data[0].price or 0.0)
-                    
+                    mdata = pos.asset.market_data[0] if pos.asset.market_data else None
+                    if mdata:
+                        price = float(mdata.price or 0.0)
                     if price == 0:
                         price = float(pos.average_price or 0.0)
 
                     qty = float(pos.quantity)
                     val = qty * price
-                    
                     if val > 0:
                         suffix = ".SA" if pos.asset.category.name != 'Internacional' else ""
                         clean_ticker = pos.asset.ticker.strip() + suffix
@@ -535,8 +500,6 @@ class PortfolioService:
                 return {"status": "Erro", "msg": "Carteira vazia ou sem valor."}
 
             weights = np.array([w / total_value for w in weights])
-            
-            # Baixa dados (otimizado)
             data = yf.download(tickers, period="1y", group_by='ticker', progress=False, auto_adjust=True)
             close_prices = pd.DataFrame()
 
@@ -552,8 +515,7 @@ class PortfolioService:
                     except: pass
 
             close_prices = close_prices.dropna()
-            if close_prices.empty:
-                return {"status": "Erro", "msg": "Dados insuficientes do Yahoo Finance."}
+            if close_prices.empty: return {"status": "Erro", "msg": "Dados insuficientes."}
 
             returns = close_prices.pct_change().dropna()
             mean_returns = returns.mean()
@@ -569,9 +531,7 @@ class PortfolioService:
                 valid_weights.append(w)
                 temp_total += w
             
-            if temp_total == 0: temp_total = 1
             valid_weights = np.array([w/temp_total for w in valid_weights])
-
             port_return = np.sum(mean_returns * valid_weights) * days
             port_volatility = np.sqrt(np.dot(valid_weights.T, np.dot(cov_matrix, valid_weights))) * np.sqrt(days)
 
@@ -586,25 +546,16 @@ class PortfolioService:
                 simulation_data[x] = price_path
 
             simulation_df = pd.DataFrame(simulation_data)
-            pior = simulation_df.quantile(0.05, axis=1).tolist()
-            medio = simulation_df.mean(axis=1).tolist()
-            melhor = simulation_df.quantile(0.95, axis=1).tolist()
-            
-            if np.isnan(pior).any() or np.isnan(medio).any():
-                return {"status": "Erro", "msg": "Erro matemático na simulação."}
-
-            results = { "pior_caso": pior, "medio": medio, "melhor_caso": melhor }
-            
-            return {
-                "status": "Sucesso", 
-                "volatilidade_anual": f"{port_volatility*100:.2f}%",
-                "projecao": results
+            results = { 
+                "pior_caso": simulation_df.quantile(0.05, axis=1).tolist(), 
+                "medio": simulation_df.mean(axis=1).tolist(), 
+                "melhor_caso": simulation_df.quantile(0.95, axis=1).tolist() 
             }
-
+            
+            return {"status": "Sucesso", "volatilidade_anual": f"{port_volatility*100:.2f}%", "projecao": results}
         except Exception as e:
             return {"status": "Erro", "msg": str(e)}
-        finally:
-            Session.remove()
+        finally: Session.remove()
     
     def update_category_meta(self, category_name, new_meta):
         session = Session()
@@ -617,34 +568,24 @@ class PortfolioService:
         except Exception as e:
             session.rollback()
             return {"status": "Erro", "msg": str(e)}
-        finally:
-            Session.remove()
+        finally: Session.remove()
 
     def validate_ticker_on_yahoo(self, ticker):
         try:
-            import yfinance as yf
-            ticker = ticker.upper().strip() # Garante maiúsculo e sem espaços
-            
-            # 1. Tenta o ticker puro (ex: AAPL, BTC-USD)
+            ticker = ticker.upper().strip() 
             stock = yf.Ticker(ticker)
             hist = stock.history(period="1d")
-            if not hist.empty: 
-                return {"valid": True, "ticker": ticker}
+            if not hist.empty: return {"valid": True, "ticker": ticker}
             
-            # 2. Se falhou, tenta adicionar .SA (Padrão B3)
             if not ticker.endswith('.SA'):
                 ticker_sa = f"{ticker}.SA"
                 stock_sa = yf.Ticker(ticker_sa)
                 hist_sa = stock_sa.history(period="1d")
-                
-                # 👇 O PULO DO GATO: Achou com .SA, mas retorna o ticker LIMPO (sem .SA)
-                if not hist_sa.empty: 
-                    return {"valid": True, "ticker": ticker} 
+                if not hist_sa.empty: return {"valid": True, "ticker": ticker} 
             
             return {"valid": False, "ticker": None}
-            
         except Exception as e:
-            print(f"Erro ao validar ticker: {e}")
+            print(f"Erro validação: {e}")
             return {"valid": False, "ticker": None}
 
     def update_fundamentals(self):
@@ -700,12 +641,10 @@ class PortfolioService:
                         count += 1
                 except Exception as e:
                     print(f"   ⚠️ Falha em {asset.ticker}: {e}")
-                    continue
             
             session.commit()
             return {"status": "Sucesso", "msg": f"{count} ativos atualizados."}
         except Exception as e:
             session.rollback()
             return {"status": "Erro", "msg": str(e)}
-        finally:
-            Session.remove()
+        finally: Session.remove()

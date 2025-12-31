@@ -23,12 +23,24 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
 
   const [loading, setLoading] = useState(false);
 
-  // 👇 Lógica: Só mostra preço manual se NÃO for ativo de bolsa
   const shouldShowManualPrice = () => {
-      if (!ativo) return false;
-      const autoTypes = ['Ação', 'FII', 'ETF', 'BDR', 'Internacional'];
-      // Se o tipo do ativo NÃO estiver na lista acima, mostramos o campo
-      return !autoTypes.includes(ativo.tipo);
+    if (!ativo) return false;
+
+    // 1. REGRA: Transformar em maiúsculo (Corrigido para JavaScript)
+    const ticker = ativo.ticker.trim().toUpperCase();
+
+    // 2. REGRA: Se for longo (> 7) ou tiver espaço, SEMPRE manual
+    if (ticker.length > 7 || ticker.includes(" ")) return true;
+
+    // 3. REGRA: Se o Yahoo não encontrou preço (está 0), liberamos o manual
+    // Isso resolve o caso do "CDB" que é curto mas não existe na bolsa
+    if (!ativo.preco_atual || ativo.preco_atual === 0) return true;
+
+    // Caso de segurança: Renda Fixa sem números (como "CDB") tende a ser manual
+    const hasNumbers = /\d/.test(ticker);
+    if (ativo.tipo === 'Renda Fixa' && !hasNumbers) return true;
+
+    return false;
   };
 
   const maxLimit = (() => {
@@ -118,7 +130,7 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
         
         {/* Header */}
         <div className="bg-slate-800/50 p-4 border-b border-slate-700 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 ">
              <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400 font-bold border border-blue-500/30">
                 {ativo.ticker.substring(0, 2)}
              </div>
