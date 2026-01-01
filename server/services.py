@@ -589,17 +589,16 @@ class PortfolioService:
             return {"valid": False, "ticker": None}
         
     def record_confirmed_dividends(self):
-        print("🤖 ROBÔ DE PROVENTOS: Iniciando carimbo de dividendos oficiais...", flush=True)
+        print("🤖 ROBÔ DE PROVENTOS: Iniciando carimbo oficial...", flush=True)
         session = Session()
         try:
-            # Pega apenas ativos que passaram na Regra de Bolsa (Regra 3)
             positions = session.query(Position).all()
             today = date.today()
 
             for pos in positions:
                 ticker_raw = pos.asset.ticker.strip().upper()
                 
-                # Reaproveita as Regras 2 e 3 que definimos para não dar erro em manuais
+                # Regras de Blindagem: Ignora manuais, criptos e nomes longos
                 if len(ticker_raw) > 7 or " " in ticker_raw or ticker_raw in ['BTC', 'ETH', 'USDT']:
                     continue
 
@@ -611,36 +610,39 @@ class PortfolioService:
                 
                 if divs.empty: continue
 
-                # Filtramos o histórico oficial dos últimos 7 dias para garantir que não perdemos nada
-                recent_divs = divs[divs.index.date >= (today - timedelta(days=7))]
+                # Filtramos os últimos 15 dias para garantir a captura
+                recent_divs = divs[divs.index.date >= (today - timedelta(days=15))]
 
                 for div_date, value in recent_divs.items():
                     div_date_obj = div_date.date()
                     
-                    # Verifica se já existe esse registro no banco para não duplicar
-                    # (Precisaremos criar a tabela 'dividends' no seu models.py)
                     exists = session.query(Dividend).filter_by(
                         asset_id=pos.asset_id, 
                         date_com=div_date_obj
                     ).first()
 
                     if not exists and pos.quantity > 0:
-                        print(f"   ✅ REGISTRANDO: {ticker_raw} | R$ {value} por cota na Data-Com {div_date_obj}", flush=True)
+                        # LÓGICA DE STATUS: Se passou 20 dias da Data-Com, consideramos PAGO
+                        # Caso contrário, fica como 'A RECEBER'
+                        dias_passados = (today - div_date_obj).days
+                        status_pagamento = "PAGO" if dias_passados > 20 else "A RECEBER"
+
+                        print(f"   ✅ CARIMBANDO: {ticker_raw} | Status: {status_pagamento}", flush=True)
                         new_div = Dividend(
                             asset_id=pos.asset_id,
                             date_com=div_date_obj,
                             value_per_share=float(value),
                             quantity_at_date=float(pos.quantity),
                             total_value=float(value) * float(pos.quantity),
-                            status="GARANTIDO"
+                            status=status_pagamento
                         )
                         session.add(new_div)
             
             session.commit()
-            print("🏁 Robô de Proventos finalizado com sucesso.", flush=True)
+            print("🏁 Robô de Proventos finalizado.", flush=True)
         except Exception as e:
             session.rollback()
-            print(f"❌ Erro no Robô de Proventos: {e}", flush=True)
+            print(f"❌ Erro no Robô: {e}", flush=True)
         finally:
             Session.remove()
 
