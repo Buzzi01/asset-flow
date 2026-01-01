@@ -33,6 +33,7 @@ class Asset(Base):
     # O Cascade aqui instrui o SQLAlchemy (Python)
     position = relationship("Position", uselist=False, back_populates="asset", cascade="all, delete-orphan")
     market_data = relationship("MarketData", back_populates="asset", cascade="all, delete-orphan")
+    dividends = relationship("Dividend", back_populates="asset", cascade="all, delete-orphan")
 
 class Position(Base):
     __tablename__ = 'positions'
@@ -50,6 +51,7 @@ class Position(Base):
     manual_dy = Column(Float, nullable=True)
     
     asset = relationship("Asset", back_populates="position")
+    
 
 class MarketData(Base):
     __tablename__ = 'market_data'
@@ -65,6 +67,22 @@ class MarketData(Base):
     sma_20 = Column(Float, nullable=True)
     
     asset = relationship("Asset", back_populates="market_data")
+
+class Dividend(Base):
+    __tablename__ = 'dividends'
+    id = Column(Integer, primary_key=True)
+    
+    # Proteção: Se o ativo sumir, o registro de dividendo é deletado (ondelete="CASCADE")
+    asset_id = Column(Integer, ForeignKey('assets.id', ondelete="CASCADE"), nullable=False)
+    
+    date_com = Column(Date, nullable=False)  # Data-Com (Ex-date)
+    date_payment = Column(Date, nullable=True)
+    value_per_share = Column(Float, nullable=False) # Valor bruto por cota
+    quantity_at_date = Column(Float, nullable=False) # Quantas cotas você tinha na data
+    total_value = Column(Float, nullable=False) # Valor total bruto (valor * qtd)
+    status = Column(String, default="GARANTIDO") # Status do registro
+    
+    asset = relationship("Asset", back_populates="dividends")
 
 class PortfolioSnapshot(Base):
     __tablename__ = 'snapshots'

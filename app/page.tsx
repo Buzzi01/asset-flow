@@ -102,7 +102,7 @@ export default function Home() {
              <div className="flex items-center gap-2">
                 <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 hover:border-slate-600 group">
                     <Calendar size={16} className="text-blue-400 group-hover:text-white transition-colors" /> 
-                    <span className="hidden sm:inline">Agenda</span>
+                    <span className="hidden sm:inline">Proventos</span>
                 </Link>
 
                 <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40">
@@ -136,6 +136,12 @@ export default function Home() {
                 <p className="text-lg font-bold text-white leading-tight">
                     {data ? money(data.resumo.Total) : '...'}
                 </p>
+                {/* 👇 INDICADOR DE PROVENTOS REAIS DO MÊS */}
+                {data?.resumo?.RendaMensal > 0 && (
+                  <p className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1">
+                    <PlusCircle size={10} /> {money(data.resumo.RendaMensal)} <span className="text-[8px] opacity-70">est.</span>
+                  </p>
+                )}
              </div>
           </div>
         </div>

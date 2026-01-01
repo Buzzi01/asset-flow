@@ -88,6 +88,25 @@ def update_asset():
         return jsonify({"status": "Erro", "msg": "Dados inválidos", "detalhe": str(e)}), 400
     except Exception as e:
         return jsonify({"status": "Erro", "msg": str(e)}), 500
+    
+@assets_bp.route('/api/validate_ticker', methods=['POST'])
+def validate_ticker():
+    data = request.json
+    ticker = data.get('ticker', '').strip()
+    if not ticker:
+        return jsonify({"valid": False, "msg": "Ticker vazio"})
+    
+    service = PortfolioService()
+    result = service.validate_ticker_on_yahoo(ticker)
+    
+    if not result['valid']:
+        return jsonify({
+            "valid": True, 
+            "ticker": ticker.upper(), 
+            "manual": True, 
+            "msg": "Ativo não encontrado no Yahoo. Será cadastrado como Manual."
+        })
+    return jsonify(result)
 
 @assets_bp.route('/api/delete_asset', methods=['POST'])
 def delete_asset():
