@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { 
   TrendingUp, Wallet, DollarSign, Activity, 
   Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle, 
-  Brain, Calendar, Eye, EyeOff 
+  Brain, Calendar, Eye, EyeOff, Percent
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePrivacy } from './context/PrivacyContext';
@@ -22,8 +22,6 @@ import { AlertsButton } from './components/AlertsButton';
 
 export default function Home() {
   const { data, history, loading, refreshing, error, refetch } = useAssetData();
-  
-  // Hook de Privacidade
   const { isHidden, togglePrivacy } = usePrivacy();
 
   const [tab, setTab] = useState('Resumo');
@@ -44,20 +42,27 @@ export default function Home() {
     { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
   ];
 
-  const filteredAssets = data?.ativos?.filter((a) => tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab) || [];
+  const filteredAssets = data?.ativos?.filter((a) => 
+    tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab
+  ).sort((a, b) => a.ticker.localeCompare(b.ticker)) || [];
+
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
+  
+  // Cálculo de Yield on Cost Médio (Proventos anuais est. / Custo Total)
+  const yocMedio = data?.resumo?.TotalInvestido > 0 
+    ? ((data.resumo.RendaMensal * 12) / data.resumo.TotalInvestido) * 100 
+    : 0;
 
-  // Helper local para esconder dinheiro
   const money = (val: number) => isHidden ? '••••••' : formatMoney(val);
 
   const handleUpdateFundamentals = async () => {
     setUpdatingFundamentals(true);
     try {
       await fetch('http://localhost:5328/api/update-fundamentals', { method: 'POST' });
-      alert("Sucesso! Inteligência (Graham, Bazin, DY) atualizada.");
+      alert("Sucesso! Inteligência atualizada.");
       refetch(true); 
-    } catch (e) { console.error(e); alert("Erro ao conectar."); } 
+    } catch (e) { console.error(e); } 
     finally { setUpdatingFundamentals(false); }
   };
 
@@ -73,80 +78,59 @@ export default function Home() {
     </div>
   );
 
-  if (error) return (
-    <div className="min-h-screen bg-[#0b0f19] flex flex-col items-center justify-center text-red-400 gap-4 p-4 text-center">
-      <AlertTriangle size={48} />
-      <h2 className="text-xl font-bold">Ocorreu um erro</h2>
-      <p className="text-sm text-slate-500 max-w-md">{error}</p>
-      <button onClick={() => refetch(true)} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors">
-        <RefreshCw size={16} /> Tentar Novamente
-      </button>
-    </div>
-  );
-
   return (
     <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20 relative">
       
       {/* HEADER FIXO */}
       <div className="sticky top-0 z-30 bg-[#0b0f19]/95 backdrop-blur-md border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-          
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 p-1.5 rounded-lg"><Wallet className="text-white" size={18} /></div>
             <h1 className="text-lg font-bold text-white tracking-tight">AssetFlow <span className="text-blue-500 text-xs font-normal ml-1">Pro</span></h1>
           </div>
           
           <div className="flex items-center gap-3">
-             
-             {/* GRUPO 1: AÇÕES */}
              <div className="flex items-center gap-2">
-                <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 hover:border-slate-600 group">
-                    <Calendar size={16} className="text-blue-400 group-hover:text-white transition-colors" /> 
+                <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 group">
+                    <Calendar size={16} className="text-blue-400" /> 
                     <span className="hidden sm:inline">Proventos</span>
                 </Link>
-
-                <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40">
+                <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20">
                     <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
                 </button>
              </div>
 
              <div className="h-6 w-px bg-slate-800 mx-1"></div>
 
-             {/* GRUPO 2: FERRAMENTAS + OLHO */}
              <div className="flex items-center gap-2">
-                
-                <button onClick={togglePrivacy} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors" title={isHidden ? "Mostrar Valores" : "Ocultar Valores"}>
+                <button onClick={togglePrivacy} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors">
                     {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
-
                 <AlertsButton onFixAsset={handleFixAsset} />
-
-                <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50 group" title="Baixar Fundamentos">
-                    <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : 'group-hover:text-purple-400 transition-colors'} />
+                <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
+                    <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : ''} />
                 </button>
-
-                <button onClick={() => refetch(true)} disabled={refreshing} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg transition-all border border-slate-700 disabled:opacity-50" title="Atualizar Preços">
+                <button onClick={() => refetch(true)} disabled={refreshing} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
                     <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                 </button>
              </div>
 
-             {/* PATRIMÔNIO */}
              <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2 min-w-[140px]">
-                <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Patrimônio</p>
-                <p className="text-lg font-bold text-white leading-tight">
+                <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider leading-none">Patrimônio</p>
+                <p className="text-lg font-bold text-white leading-tight mt-0.5">
                     {data ? money(data.resumo.Total) : '...'}
                 </p>
-                {/* 👇 INDICADOR DE PROVENTOS REAIS DO MÊS */}
                 {data?.resumo?.RendaMensal > 0 && (
-                  <p className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1">
-                    <PlusCircle size={10} /> {money(data.resumo.RendaMensal)} <span className="text-[8px] opacity-70">est.</span>
+                  <p className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1 leading-none">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 
+                    {money(data.resumo.RendaMensal)} 
+                    <span className="text-[8px] opacity-70 ml-0.5 uppercase tracking-tighter">est.</span>
                   </p>
                 )}
              </div>
           </div>
         </div>
         
-        {/* ABAS */}
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar border-t border-slate-800/30">
           {categories.map((c) => (
             <button key={c.id} onClick={() => setTab(c.id)} className={`flex items-center gap-2 px-1 py-3 text-xs font-medium transition-all relative border-b-2 ${tab === c.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
@@ -159,19 +143,19 @@ export default function Home() {
       <div className="max-w-7xl mx-auto p-4 md:p-6">
         
         {tab === 'Resumo' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* KPI CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard title="Renda Passiva Est." value={money(data?.resumo?.RendaMensal || 0)} subtext="Mensal" icon={DollarSign} colorClass="text-green-400"/>
-              <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo" icon={PiggyBank} colorClass="text-blue-400"/>
+            {/* KPI CARDS REORGANIZADOS (Substituído Renda por Yield on Cost Médio) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard 
-                  title="Lucro / Prejuízo" 
-                  value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} 
-                  subtext="Nominal" 
-                  icon={BarChart3} 
-                  colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}
+                title="Yield on Cost Médio" 
+                value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} 
+                subtext="Anual Est." 
+                icon={Percent} 
+                colorClass="text-purple-400"
               />
+              <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400"/>
+              <StatCard title="Lucro / Prejuízo" value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Variação Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"} />
               
               <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
                   <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Target size={40} className="text-blue-400" /></div>
@@ -193,10 +177,12 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-               <div className="flex flex-col h-full"><RiskRadar alertas={data?.alertas || []} /></div>
-               <div className="lg:col-span-2 flex flex-col h-full">
-                 {/* Passando as props novas para permitir edição de meta */}
+            {/* GRID PRINCIPAL */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+               <div className="h-[525px]">
+                 <RiskRadar alertas={data?.alertas || []} />
+               </div>
+               <div className="lg:col-span-2 h-[525px]">
                  <CategorySummary 
                    ativos={data?.ativos || []} 
                    categorias={data?.categorias || []} 
@@ -205,16 +191,20 @@ export default function Home() {
                </div>
             </div>
 
-            <div className="mt-4"><MonteCarloChart /></div>
+            {/* MONTE CARLO */}
+            <div className="w-full relative z-0">
+              <MonteCarloChart />
+            </div>
           </div>
         )}
 
+        {/* ... Restante do código (Evolução, Radar, Tabelas) mantido ... */}
         {tab === 'Evolução' && <div className="animate-in fade-in h-[500px]"><HistoryChart data={history} /></div>}
-        {tab === 'Radar' && <RiskRadar alertas={data?.alertas || []} />}
+        {tab === 'Radar' && <div className="h-[600px]"><RiskRadar alertas={data?.alertas || []} /></div>}
 
         {tab !== 'Resumo' && tab !== 'Radar' && tab !== 'Evolução' && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950/50 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800">
                   <tr>

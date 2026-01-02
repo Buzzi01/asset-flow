@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Snowflake, TrendingUp, TrendingDown, Pencil, FileText, Info } from 'lucide-react';
 import { formatMoney, getStatusBg, getStatusColor } from '../utils'; 
 import { Asset } from '../types';
-import { usePrivacy } from '../context/PrivacyContext'; // 👈 Importando o hook
+import { usePrivacy } from '../context/PrivacyContext';
 
 interface AssetRowProps {
   ativo: Asset;
@@ -14,24 +14,39 @@ interface AssetRowProps {
   total: number; 
 }
 
+// Sub-componente para limpar os códigos de isHidden sem mudar o design original
+const PrivateValue = ({ value, isHidden, className = "" }: { value: string | number, isHidden: boolean, className?: string }) => (
+  <span className={className}>{isHidden ? (className.includes('pct') ? '•••%' : '••••••') : value}</span>
+);
+
 export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: AssetRowProps) => {
-  const { isHidden } = usePrivacy(); // 👈 Pegando o estado global
+  const { isHidden } = usePrivacy();
+
+  // Travas de segurança para evitar que o componente quebre se o dado estiver ausente
+  const pvp = ativo.p_vp || 0;
+  const magicNumber = ativo.magic_number || 0;
+  const score = ativo.score ?? 0;
+  const rsi = ativo.rsi ?? 50;
+  const vi_graham = ativo.vi_graham ?? 0;
+  const mg_graham = ativo.mg_graham ?? 0;
 
   const percentualDaMeta = ativo.meta > 0 ? (ativo.pct_na_categoria / ativo.meta) * 100 : 0;
   const barraWidth = Math.min(percentualDaMeta, 100);
   const isOverweight = ativo.pct_na_categoria > ativo.meta;
   
-  const magicNumber = ativo.magic_number || 0;
   const atingiuMagic = magicNumber > 0 && ativo.qtd >= magicNumber;
   const lucroPositivo = ativo.lucro_valor >= 0;
   
-  const pvp = ativo.p_vp || 0;
+  // Trava visual: Só mostra indicadores em Ações ou FIIs
   const showIndicators = tab === 'Ação' || tab === 'FII';
+  
   const [imgError, setImgError] = useState(false);
   const logoUrl = `https://raw.githubusercontent.com/thefintz/icones-b3/main/icones/${ativo.ticker}.png`;
 
-  const separator = ativo.motivo && ativo.motivo.includes(' • ') ? ' • ' : ' + ';
-  const motivosLista = ativo.motivo ? ativo.motivo.split(separator) : [];
+  // Correção do erro da linha 168: Garantindo que motivosLista seja sempre um array
+  const motivosRaw = ativo.motivo || "";
+  const separator = motivosRaw.includes(' • ') ? ' • ' : ' + ';
+  const motivosLista = motivosRaw ? motivosRaw.split(separator) : [];
 
   const getBulletClass = (text: string) => {
       const t = text.toLowerCase();
@@ -78,9 +93,8 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                     )}
                 </div>
             </div>
-            {/* Esconde a quantidade de cotas também? Geralmente sim para privacidade total, mas deixei opcional */}
             <div className="text-[10px] text-slate-500 uppercase font-medium tracking-wide">
-                {ativo.tipo} • {isHidden ? '•••' : ativo.qtd} UN
+                {ativo.tipo} • <PrivateValue value={`${ativo.qtd} UN`} isHidden={isHidden} />
             </div>
           </div>
         </div>
@@ -89,42 +103,26 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
       {/* 2. POSIÇÃO */}
       <td className="p-4 text-right">
         <div className="flex flex-col items-end">
-            <span className="text-slate-200 font-bold">
-                {isHidden ? '••••••' : formatMoney(ativo.total_atual)}
-            </span>
-            <span className="text-[10px] text-slate-500">
-                Investido: {isHidden ? '••••••' : formatMoney(ativo.total_investido)}
-            </span>
+            <PrivateValue value={formatMoney(ativo.total_atual)} isHidden={isHidden} className="text-slate-200 font-bold" />
+            <PrivateValue value={`Investido: ${formatMoney(ativo.total_investido)}`} isHidden={isHidden} className="text-[10px] text-slate-500" />
         </div>
       </td>
 
       {/* 3. PREÇO */}
       <td className="p-4 text-right hidden sm:table-cell">
         <div className="flex flex-col items-end">
-            <span className="text-slate-300 font-mono">
-                {isHidden ? '••••••' : displayPrice}
-            </span>
-            <span className="text-[10px] text-slate-600">
-                PM: {isHidden ? '••••••' : displayPM}
-            </span>
+            <PrivateValue value={displayPrice} isHidden={isHidden} className="text-slate-300 font-mono" />
+            <PrivateValue value={`PM: ${displayPM}`} isHidden={isHidden} className="text-[10px] text-slate-600" />
         </div>
       </td>
 
       {/* 4. RESULTADO */}
       <td className="p-4 text-right">
         <div className="flex flex-col items-end">
-            <span className={`font-bold font-mono ${lucroPositivo ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {isHidden ? '••••••' : (lucroPositivo ? '+' : '') + formatMoney(ativo.lucro_valor)}
-            </span>
+            <PrivateValue value={(lucroPositivo ? '+' : '') + formatMoney(ativo.lucro_valor)} isHidden={isHidden} className={`font-bold font-mono ${lucroPositivo ? 'text-emerald-400' : 'text-rose-400'}`} />
             <div className={`text-[10px] flex items-center gap-1 ${lucroPositivo ? 'text-emerald-500/70' : 'text-rose-500/70'}`}>
-                {isHidden ? (
-                    <span className="text-slate-600">•••%</span>
-                ) : (
-                    <>
-                        {lucroPositivo ? <TrendingUp size={10}/> : <TrendingDown size={10}/>} 
-                        {ativo.lucro_pct.toFixed(2)}%
-                    </>
-                )}
+                <PrivateValue value={`${lucroPositivo ? '+' : ''}${ativo.lucro_pct.toFixed(2)}%`} isHidden={isHidden} className="pct" />
+                {!isHidden && (lucroPositivo ? <TrendingUp size={10}/> : <TrendingDown size={10}/>)}
             </div>
         </div>
       </td>
@@ -145,78 +143,65 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
         </div>
       </td>
 
-      {/* 6. APORTE & INSIGHTS */}
+      {/* 6. APORTE & INSIGHTS (Tooltip Restaurado) */}
       <td className="p-4 text-right">
         <div className="flex flex-col items-end gap-1.5">
           {ativo.falta_comprar > 1 ? (
-            <span className="text-blue-300 font-bold bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20 text-xs whitespace-nowrap shadow-sm shadow-blue-900/20">
-                {isHidden ? '••••••' : `+${formatMoney(ativo.falta_comprar)}`}
-            </span>
+            <PrivateValue value={`+${formatMoney(ativo.falta_comprar)}`} isHidden={isHidden} className="text-blue-300 font-bold bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20 text-xs whitespace-nowrap shadow-sm shadow-blue-900/20" />
           ) : (
             <span className="text-slate-700 text-[10px] font-medium">-</span>
           )}
           
-             <div className="group/tooltip relative inline-block">
-                 {/* Badge */}
-                 <div className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border uppercase font-bold cursor-help transition-all hover:brightness-110 ${getStatusColor(ativo.status)}`}>
-                    {ativo.recomendacao}
-                    <Info size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
-                 </div>
-                 
-                 {/* CARD FLUTUANTE */}
-                 <div className={`absolute right-0 ${tooltipPositionClass} z-50 w-64 p-0 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-left hidden group-hover/tooltip:block pointer-events-none animate-in fade-in zoom-in-95 duration-200`}>
-                    <div className="bg-slate-800/80 px-3 py-2 border-b border-slate-700 rounded-t-lg flex justify-between items-center backdrop-blur-sm">
-                        <span className="text-[10px] font-bold text-slate-200 flex items-center gap-1">
-                           📊 Análise de {ativo.ticker}
-                        </span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${ativo.score >= 70 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>
-                           Score: {ativo.score}
-                        </span>
-                    </div>
-                    
-                    <div className="p-3 space-y-2.5">
-                        {motivosLista.length > 0 ? motivosLista.map((m, i) => (
-                            <div key={i} className="text-[10px] text-slate-300 flex items-start gap-2 leading-relaxed">
-                                <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${getBulletClass(m)}`}></span>
-                                {m}
-                            </div>
-                        )) : <span className="text-[10px] text-slate-500 italic">Apenas rebalanceamento de carteira.</span>}
-                    </div>
-
-                    {ativo.rsi !== undefined && (
-                        <div className="px-3 pb-3 pt-2 border-t border-slate-800/80 bg-slate-800/30 rounded-b-lg">
-                           <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-[9px] text-slate-400 font-bold tracking-wide">MOMENTO (RSI 14D)</span>
-                                <span className={`text-[9px] font-bold ${ativo.rsi < 30 ? 'text-emerald-400' : ativo.rsi > 70 ? 'text-rose-400' : 'text-blue-400'}`}>
-                                    {ativo.rsi.toFixed(0)}
-                                </span>
-                           </div>
-                           <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex relative">
-                                <div className="absolute left-[30%] h-full w-[1px] bg-slate-600/30 z-10"></div>
-                                <div className="absolute left-[70%] h-full w-[1px] bg-slate-600/30 z-10"></div>
-                                <div 
-                                    className={`h-full rounded-full transition-all duration-1000 ${ativo.rsi < 30 ? 'bg-emerald-500' : ativo.rsi > 70 ? 'bg-rose-500' : 'bg-blue-500'}`} 
-                                    style={{ width: `${Math.min(ativo.rsi, 100)}%` }}
-                                ></div>
-                           </div>
-                           <div className="flex justify-between text-[8px] text-slate-600 mt-1 px-0.5 font-mono">
-                               <span>0</span><span className="text-emerald-700">30</span><span className="text-rose-900">70</span><span>100</span>
-                           </div>
-                        </div>
-                    )}
-                 </div>
+          <div className="group/tooltip relative inline-block">
+             <div className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border uppercase font-bold cursor-help transition-all hover:brightness-110 ${getStatusColor(ativo.status)}`}>
+                {ativo.recomendacao}
+                <Info size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
              </div>
+             
+             {/* Card Flutuante com Design Original e RSI */}
+             <div className={`absolute right-0 ${tooltipPositionClass} z-50 w-64 p-0 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-left hidden group-hover/tooltip:block pointer-events-none animate-in fade-in zoom-in-95 duration-200`}>
+                <div className="bg-slate-800/80 px-3 py-2 border-b border-slate-700 rounded-t-lg flex justify-between items-center backdrop-blur-sm">
+                    <span className="text-[10px] font-bold text-slate-200 flex items-center gap-1">
+                        📊 Análise de {ativo.ticker}
+                    </span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${score >= 70 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>
+                        Score: {score}
+                    </span>
+                </div>
+                
+                <div className="p-3 space-y-2.5">
+                    {motivosLista.length > 0 ? motivosLista.map((m, i) => (
+                        <div key={i} className="text-[10px] text-slate-300 flex items-start gap-2 leading-relaxed">
+                            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${getBulletClass(m)}`}></span>
+                            {m}
+                        </div>
+                    )) : <span className="text-[10px] text-slate-500 italic">Apenas rebalanceamento de carteira.</span>}
+                </div>
+
+                <div className="px-3 pb-3 pt-2 border-t border-slate-800/80 bg-slate-800/30 rounded-b-lg">
+                    <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase">Momento (RSI 14D)</span>
+                        <span className={`text-[9px] font-bold ${rsi < 30 ? 'text-emerald-400' : rsi > 70 ? 'text-rose-400' : 'text-blue-400'}`}>
+                            {rsi.toFixed(0)}
+                        </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex relative">
+                        <div className={`h-full transition-all duration-1000 ${rsi < 30 ? 'bg-emerald-500' : rsi > 70 ? 'bg-rose-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(rsi, 100)}%` }}></div>
+                    </div>
+                </div>
+             </div>
+          </div>
         </div>
       </td>
 
-      {/* 7. INDICADORES */}
+      {/* 7. INDICADORES (Trava Recuperada + Inclusão do V.I.) */}
       {showIndicators && (
         <td className="p-4 text-center hidden lg:table-cell w-28 align-middle">
             {tab === 'FII' ? (
                  <div className="flex flex-col gap-1 items-end w-full">
                      {pvp > 0 && (
                          <div className="text-xs font-mono flex items-center gap-1.5 bg-slate-800/30 px-2 py-0.5 rounded border border-slate-800" title="P/VP">
-                            <span className="text-[9px] text-slate-500">P/VP</span>
+                            <span className="text-[9px] text-slate-500 uppercase">P/VP</span>
                             <span className={pvp < 0.95 ? 'text-emerald-400 font-bold' : pvp > 1.05 ? 'text-rose-400' : 'text-slate-300'}>
                                 {pvp.toFixed(2)}
                             </span>
@@ -225,18 +210,21 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                      {magicNumber > 0 && (
                          <div className={`text-[10px] flex items-center gap-1 justify-end w-full px-1 ${atingiuMagic ? 'text-cyan-400 font-bold' : 'text-slate-600'}`} title="Progresso Magic Number">
                             <Snowflake size={10} className={atingiuMagic ? "animate-pulse" : ""}/> 
-                            <span>{isHidden ? '•••' : ativo.qtd}/{magicNumber}</span>
+                            <PrivateValue value={`${ativo.qtd}/${magicNumber}`} isHidden={isHidden} />
                          </div>
                      )}
                  </div>
-            ) : tab === 'Ação' && (ativo.vi_graham ?? 0) > 0 ? (
-                <div className="flex justify-center">
+            ) : tab === 'Ação' && (vi_graham > 0 || mg_graham !== 0) ? (
+                <div className="flex flex-col items-center gap-1">
                   <span className={`text-[10px] font-mono px-2 py-1 rounded border ${
-                      (ativo.mg_graham ?? 0) > 20 ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/20' : 
-                      (ativo.mg_graham ?? 0) > 0 ? 'text-emerald-600 bg-emerald-400/5 border-emerald-600/10' :
+                      mg_graham > 20 ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/20' : 
+                      mg_graham > 0 ? 'text-emerald-600 bg-emerald-400/5 border-emerald-600/10' :
                       'text-rose-400 bg-rose-400/5 border-rose-400/20'
                   }`} title="Margem de Graham">
-                    {(ativo.mg_graham ?? 0) > 0 ? '+' : ''}{(ativo.mg_graham ?? 0).toFixed(0)}%
+                    {mg_graham > 0 ? '+' : ''}{mg_graham.toFixed(0)}%
+                  </span>
+                  <span className="text-[9px] text-slate-600 font-medium uppercase tracking-tighter">
+                    V.I: <PrivateValue value={formatMoney(vi_graham)} isHidden={isHidden} />
                   </span>
                 </div>
             ) : <span className="text-slate-800">-</span>}

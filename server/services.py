@@ -13,7 +13,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 import traceback
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from database.models import Asset, Position, Category, MarketData, PortfolioSnapshot, Dividend, engine
+from database.models import Asset, Position, Category, MarketData, PortfolioSnapshot, engine
 
 session_factory = sessionmaker(bind=engine)
 Session = scoped_session(session_factory)
@@ -385,24 +385,36 @@ class PortfolioService:
         finally: Session.remove()
         
     def update_position(self, ticker, qtd, pm, meta, dy=0, lpa=0, vpa=0, current_price=None):
-        print(f"📝 Atualizando {ticker} (Preço Manual: {current_price})...")
+        """
+        Atualiza os dados de posição de um ativo.
+        CORREÇÃO: Agora mapeia 'qtd' do frontend para 'quantity' do Model.
+        """
+        print(f"📝 JOB: Atualizando {ticker} -> Qtd: {qtd}, PM: {pm}, Meta: {meta}%")
         session = Session()
         try:
+            # 1. Busca o ativo pelo ticker
             asset = session.query(Asset).filter_by(ticker=ticker).first()
-            if not asset: return {"status": "Erro", "msg": "Ativo não encontrado"}
+            if not asset: 
+                return {"status": "Erro", "msg": f"Ativo {ticker} não encontrado"}
             
+            # 2. Busca ou cria a posição vinculada (Tabela 'positions' no seu model)
             pos = session.query(Position).filter_by(asset_id=asset.id).first()
             if not pos:
                 pos = Position(asset_id=asset.id)
                 session.add(pos)
             
-            pos.quantity = float(qtd)
+            # 3. MAPEAMENTO CORRETO PARA O MODEL
+            # No seu models.py a coluna chama-se 'quantity', não 'qtd'
+            pos.quantity = float(qtd) 
             pos.average_price = float(pm)
             pos.target_percent = float(meta)
+            
+            # Atualiza indicadores manuais
             pos.manual_dy = float(dy)
             pos.manual_lpa = float(lpa)
             pos.manual_vpa = float(vpa)
             
+            # 4. Tratamento de Preço Manual
             if current_price is not None and str(current_price).strip() != "":
                 mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                 if not mdata:
@@ -410,20 +422,26 @@ class PortfolioService:
                     session.add(mdata)
                 
                 mdata.price = float(current_price)
-                mdata.date = datetime.now()
+                mdata.date = date.today() # Usando date do seu import
                 mdata.min_6m = float(current_price) 
                 
             session.commit()
+            print(f"✅ Sucesso: {ticker} (Quantity: {pos.quantity}) salvo no banco.")
             return {"status": "Sucesso", "msg": "Dados e Preço Atualizados!"}
+            
         except Exception as e:
             session.rollback()
+            print(f"❌ Erro ao atualizar: {str(e)}")
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
         
     def add_new_asset(self, ticker, category_name, qtd, pm, meta=0):
+        """
+        Cria um novo ativo e sua posição inicial.
+        """
         ticker = ticker.upper().strip().replace(".SA", "")
-        print(f"🆕 Criando Ativo: {ticker}")
+        print(f"🆕 JOB: Criando novo Ativo: {ticker}")
         session = Session()
         try:
             exists = session.query(Asset).filter_by(ticker=ticker).first()
@@ -435,8 +453,9 @@ class PortfolioService:
             currency = "USD" if category.name in ["Internacional", "Cripto"] else "BRL"
             new_asset = Asset(ticker=ticker, category_id=category.id, currency=currency)
             session.add(new_asset)
-            session.flush()
+            session.flush() # Garante que o new_asset.id seja gerado antes da Position
             
+            # Criando a posição inicial com os nomes de colunas corretos do Model
             pos = Position(
                 asset_id=new_asset.id, 
                 quantity=float(qtd), 
@@ -446,11 +465,13 @@ class PortfolioService:
             session.add(pos)
             
             session.commit()
-            return {"status": "Sucesso", "msg": "Ativo criado!"}
+            return {"status": "Sucesso", "msg": f"Ativo {ticker} criado com sucesso!"}
         except Exception as e:
             session.rollback()
+            print(f"❌ Erro ao adicionar ativo: {e}")
             return {"status": "Erro", "msg": str(e)}
-        finally: Session.remove()
+        finally: 
+            Session.remove()
         
     def delete_asset(self, asset_id):
         session = Session()
@@ -587,64 +608,7 @@ class PortfolioService:
         except Exception as e:
             print(f"Erro validação: {e}")
             return {"valid": False, "ticker": None}
-        
-    def record_confirmed_dividends(self):
-        print("🤖 ROBÔ DE PROVENTOS: Iniciando carimbo oficial...", flush=True)
-        session = Session()
-        try:
-            positions = session.query(Position).all()
-            today = date.today()
-
-            for pos in positions:
-                ticker_raw = pos.asset.ticker.strip().upper()
-                
-                # Regras de Blindagem: Ignora manuais, criptos e nomes longos
-                if len(ticker_raw) > 7 or " " in ticker_raw or ticker_raw in ['BTC', 'ETH', 'USDT']:
-                    continue
-
-                is_intl = pos.asset.category.name == 'Internacional'
-                symbol = ticker_raw if is_intl or ticker_raw.endswith('.SA') else f"{ticker_raw}.SA"
-                
-                stock = yf.Ticker(symbol)
-                divs = stock.dividends
-                
-                if divs.empty: continue
-
-                # Filtramos os últimos 15 dias para garantir a captura
-                recent_divs = divs[divs.index.date >= (today - timedelta(days=15))]
-
-                for div_date, value in recent_divs.items():
-                    div_date_obj = div_date.date()
-                    
-                    exists = session.query(Dividend).filter_by(
-                        asset_id=pos.asset_id, 
-                        date_com=div_date_obj
-                    ).first()
-
-                    if not exists and pos.quantity > 0:
-                        # LÓGICA DE STATUS: Se passou 20 dias da Data-Com, consideramos PAGO
-                        # Caso contrário, fica como 'A RECEBER'
-                        dias_passados = (today - div_date_obj).days
-                        status_pagamento = "PAGO" if dias_passados > 20 else "A RECEBER"
-
-                        print(f"   ✅ CARIMBANDO: {ticker_raw} | Status: {status_pagamento}", flush=True)
-                        new_div = Dividend(
-                            asset_id=pos.asset_id,
-                            date_com=div_date_obj,
-                            value_per_share=float(value),
-                            quantity_at_date=float(pos.quantity),
-                            total_value=float(value) * float(pos.quantity),
-                            status=status_pagamento
-                        )
-                        session.add(new_div)
             
-            session.commit()
-            print("🏁 Robô de Proventos finalizado.", flush=True)
-        except Exception as e:
-            session.rollback()
-            print(f"❌ Erro no Robô: {e}", flush=True)
-        finally:
-            Session.remove()
 
     def update_fundamentals(self):
         print("📊 JOB: Calculando Fundamentos...")

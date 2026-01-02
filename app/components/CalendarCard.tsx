@@ -1,6 +1,9 @@
+'use client';
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, DollarSign, CalendarClock } from 'lucide-react';
+import { Calendar, Clock, CalendarClock } from 'lucide-react';
 import { formatMoney } from '../utils';
+import { Badge } from './ui/Badge';
+import { Skeleton } from './ui/Skeleton';
 
 interface Evento {
   ticker: string;
@@ -19,87 +22,108 @@ export const CalendarCard = () => {
     fetch('http://localhost:5328/api/calendar')
       .then(res => res.json())
       .then(data => {
-        setEvents(data);
+        // Ordena por data (mais próximos primeiro)
+        const sorted = data.sort((a: Evento, b: Evento) => 
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+        setEvents(sorted);
         setLoading(false);
       })
       .catch(e => setLoading(false));
   }, []);
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    // Adiciona o timezone offset para corrigir bug de dia anterior
-    const userTimezoneOffset = date.getTimezoneOffset() * 60000;
-    const correctedDate = new Date(date.getTime() + userTimezoneOffset);
-    return correctedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  // Função para pegar o nome do mês abreviado
+  const getMonthAbbr = (dateStr: string) => {
+    const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const monthIndex = parseInt(dateStr.split('-')[1]) - 1;
+    return months[monthIndex] || '---';
   };
 
+  const getDay = (dateStr: string) => dateStr.split('-')[2];
+
   return (
-    <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl border border-slate-700/50 p-6 h-full flex flex-col overflow-hidden">
+    <div className="bg-[#0b0f19] backdrop-blur-md rounded-2xl border border-slate-800 p-6 h-full flex flex-col overflow-hidden shadow-xl">
       
-      {/* Cabeçalho Fixo */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-emerald-500/10 rounded-lg">
+      {/* Cabeçalho */}
+      <div className="flex items-center justify-between mb-6 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
              <CalendarClock className="text-emerald-400" size={20} />
           </div>
-          <h2 className="text-lg font-bold text-white">Próximos Proventos</h2>
+          <div>
+            <h2 className="text-lg font-bold text-white leading-tight">Agenda</h2>
+            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Proventos</p>
+          </div>
         </div>
-        <span className="text-[10px] bg-emerald-900/30 text-emerald-400 px-2 py-1 rounded-full border border-emerald-500/30 font-bold uppercase">
-          Futuro
-        </span>
+        <Badge label="Futuro" variant="emerald" />
       </div>
 
       {/* Lista com Scroll Interno */}
-      <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar min-h-0">
+      <div className="flex-1 overflow-y-auto pr-1 space-y-3 custom-scrollbar min-h-0">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2 opacity-50">
-             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-             <p className="text-xs">Buscando na B3...</p>
-          </div>
-        ) : events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3">
-            <div className="bg-slate-800/50 p-4 rounded-full">
-                <Calendar size={24} className="opacity-40"/>
+          // Skeletons para o carregamento
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between p-3 border border-slate-800/50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <Skeleton className="w-11 h-11" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <Skeleton className="h-4 w-12" />
             </div>
+          ))
+        ) : events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3 py-10">
+            <Calendar size={32} className="opacity-20 text-slate-400" />
             <div className="text-center">
                 <p className="text-sm font-bold text-slate-400">Nenhum agendamento</p>
-                <p className="text-xs text-slate-600 mt-1">As empresas ainda não anunciaram.</p>
+                <p className="text-xs text-slate-600">As empresas ainda não anunciaram.</p>
             </div>
           </div>
         ) : (
           events.map((evt, idx) => (
-              <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/80 group">
-                
-                <div className="flex items-center gap-3">
-                  {/* Data Box */}
-                  <div className="w-11 h-11 rounded-lg flex flex-col items-center justify-center border bg-slate-800 text-slate-300 border-slate-700 group-hover:border-emerald-500/50 group-hover:text-emerald-400 transition-colors">
-                      <span className="text-[9px] uppercase font-bold opacity-60">{evt.date.split('-')[1]}</span> {/* Mês */}
-                      <span className="text-lg font-bold leading-none">{evt.date.split('-')[2]}</span> {/* Dia */}
-                  </div>
-                  
-                  <div>
-                    <div className="flex items-center gap-2">
-                       <span className="font-bold text-slate-200">{evt.ticker}</span>
-                       <span className="text-[9px] bg-slate-700 text-slate-400 px-1.5 rounded uppercase font-bold">
-                           {evt.type === 'DATA_COM' ? 'Data Com' : 'Pagamento'}
-                       </span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
-                       <Clock size={10}/>
-                       {evt.status}
-                    </p>
-                  </div>
+            <div key={idx} className="flex items-center justify-between p-3 rounded-xl border transition-all bg-slate-900/40 border-slate-800/60 hover:border-emerald-500/30 hover:bg-slate-800/40 group">
+              
+              <div className="flex items-center gap-3">
+                {/* Data Box - Design Mais Refinado */}
+                <div className="w-11 h-11 rounded-lg flex flex-col items-center justify-center border bg-slate-950 text-slate-400 border-slate-800 group-hover:border-emerald-500/40 transition-colors">
+                    <span className="text-[8px] uppercase font-black tracking-tighter text-slate-500">
+                      {getMonthAbbr(evt.date)}
+                    </span>
+                    <span className="text-lg font-black leading-none text-slate-200 group-hover:text-emerald-400">
+                      {getDay(evt.date)}
+                    </span>
                 </div>
-
-                <div className="text-right">
-                   <p className="font-mono font-bold text-emerald-400 text-sm">
-                      {evt.total > 0 ? formatMoney(evt.total) : '---'}
-                   </p>
-                   <p className="text-[10px] text-slate-600">
-                      {evt.value_per_share > 0 ? `${formatMoney(evt.value_per_share)}/cota` : 'A definir'}
-                   </p>
+                
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-200 text-sm tracking-tight">{evt.ticker}</span>
+                      <span className={`text-[8px] px-1.5 py-0.5 rounded border font-black uppercase tracking-tight ${
+                        evt.type === 'DATA_COM' 
+                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      }`}>
+                          {evt.type === 'DATA_COM' ? 'Data Com' : 'Pagamento'}
+                      </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium">
+                      <Clock size={10} className="text-slate-600" />
+                      {evt.status}
+                  </div>
                 </div>
               </div>
+
+              <div className="text-right">
+                  <p className="font-mono font-bold text-emerald-400 text-sm">
+                    {evt.total > 0 ? formatMoney(evt.total) : '---'}
+                  </p>
+                  <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">
+                    {evt.value_per_share > 0 ? `${formatMoney(evt.value_per_share)}/ct` : 'A definir'}
+                  </p>
+              </div>
+            </div>
           ))
         )}
       </div>

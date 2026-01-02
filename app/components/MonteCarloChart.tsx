@@ -4,15 +4,14 @@ import { useEffect, useState } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
-// 👇 1. Importar o contexto
 import { usePrivacy } from '../context/PrivacyContext';
+import { Card } from './ui/Card';
+import { BrainCircuit, Info } from 'lucide-react';
 
 export default function MonteCarloChart() {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ vol: '', retorno: '' });
-  
-  // 👇 2. Pegar o estado de privacidade
   const { isHidden } = usePrivacy();
 
   useEffect(() => {
@@ -35,79 +34,121 @@ export default function MonteCarloChart() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="animate-pulse h-64 bg-slate-800/50 rounded-xl" />;
+  if (loading) return <div className="animate-pulse h-[400px] bg-slate-900/50 rounded-xl border border-slate-800" />;
   if (data.length === 0) return null;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                🔮 Simulação de Monte Carlo (1 Ano)
+    <Card className="flex flex-col !bg-[#0f172a] !border-slate-800 shadow-2xl p-6 animate-in fade-in duration-500">
+      
+      {/* Cabeçalho Sincronizado */}
+      <div className="flex justify-between items-start mb-8">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
+            <BrainCircuit size={16} className="text-purple-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-200 text-xs uppercase tracking-widest leading-none">
+              Simulação de Monte Carlo
             </h3>
-            <p className="text-slate-400 text-sm mt-1">
-                Projeção baseada em 1.000 cenários possíveis (Movimento Browniano)
-            </p>
+            <div className="flex items-center gap-1.5 mt-2 text-slate-500">
+              <Info size={10} />
+              <p className="text-[10px] font-medium uppercase tracking-tight">
+                1.000 Cenários • Movimento Browniano • Projeção 1 Ano
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="text-right">
-            <p className="text-xs text-slate-500 uppercase font-bold">Volatilidade Anual</p>
-            {/* Volatilidade é porcentagem, não revela patrimônio, então mantive visível. 
-                Se quiser esconder, coloque: {isHidden ? '•••' : stats.vol} */}
-            <p className="text-2xl font-mono text-yellow-400">{stats.vol}</p>
+
+        <div className="text-right space-y-1">
+          <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+            Volatilidade Anual
+          </p>
+          <p className="text-xl font-bold text-amber-400 font-mono">
+            {stats.vol}
+          </p>
         </div>
       </div>
 
+      {/* Gráfico */}
       <div className="h-[300px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+          <LineChart data={data} margin={{ top: 5, right: 5, left: isHidden ? 0 : -10, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} opacity={0.5} />
+            
             <XAxis 
-                dataKey="dia" 
-                stroke="#94a3b8" 
-                tickFormatter={(val) => val % 30 === 0 ? `${val}d` : ''} 
+              dataKey="dia" 
+              stroke="#475569" 
+              fontSize={10}
+              fontWeight="bold"
+              tickLine={false}
+              axisLine={false}
+              tickFormatter={(val) => val % 60 === 0 ? `${val}d` : ''} 
+              dy={10}
             />
+            
             <YAxis 
-                stroke="#94a3b8" 
-                // 👇 3. Esconde o Eixo Y
-                tickFormatter={(val) => isHidden ? '••••' : `R$${(val/1000).toFixed(0)}k`}
-                domain={['auto', 'auto']}
-                width={isHidden ? 40 : 60} // Ajusta largura para não ficar estranho
+              stroke="#475569" 
+              fontSize={10}
+              fontWeight="bold"
+              tickLine={false}
+              axisLine={false}
+              width={isHidden ? 45 : 65}
+              tickFormatter={(val) => isHidden ? '••••' : `R$ ${(val/1000).toFixed(0)}k`}
+              domain={['auto', 'auto']}
             />
+
             <Tooltip 
-                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
-                // 👇 4. Esconde o valor do Tooltip (mouse over)
-                formatter={(val: number) => [isHidden ? '••••••' : `R$ ${val.toFixed(2)}`, '']}
-                labelFormatter={(label) => `Dia ${label}`}
+              cursor={{ stroke: '#334155', strokeWidth: 1 }}
+              contentStyle={{ 
+                backgroundColor: '#0f172a', 
+                borderColor: '#1e293b', 
+                borderRadius: '12px',
+                border: '1px solid #334155',
+                boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.5)'
+              }}
+              itemStyle={{ fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', padding: '2px 0' }}
+              labelStyle={{ color: '#64748b', marginBottom: '8px', fontSize: '10px', fontWeight: 'bold' }}
+              formatter={(val: number) => [isHidden ? '••••••' : `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, '']}
+              labelFormatter={(label) => `Dia ${label}`}
             />
-            <Legend />
+            
+            <Legend 
+              verticalAlign="bottom" 
+              height={36} 
+              iconType="circle"
+              formatter={(value) => <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{value}</span>}
+            />
             
             <Line 
-                type="monotone" 
-                dataKey="melhor" 
-                name="Cenário Otimista (95%)" 
-                stroke="#4ade80" 
-                strokeWidth={2} 
-                dot={false} 
+              type="monotone" 
+              dataKey="melhor" 
+              name="Otimista (95%)" 
+              stroke="#10b981" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{ r: 4, strokeWidth: 0 }}
             />
             <Line 
-                type="monotone" 
-                dataKey="medio" 
-                name="Tendência Média" 
-                stroke="#38bdf8" 
-                strokeWidth={3} 
-                dot={false} 
+              type="monotone" 
+              dataKey="medio" 
+              name="Tendência" 
+              stroke="#3b82f6" 
+              strokeWidth={3} 
+              dot={false} 
+              activeDot={{ r: 6, strokeWidth: 0 }}
             />
             <Line 
-                type="monotone" 
-                dataKey="pior" 
-                name="Cenário Pessimista (5%)" 
-                stroke="#f87171" 
-                strokeWidth={2} 
-                dot={false} 
+              type="monotone" 
+              dataKey="pior" 
+              name="Pessimista (5%)" 
+              stroke="#ef4444" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{ r: 4, strokeWidth: 0 }}
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </Card>
   );
 }

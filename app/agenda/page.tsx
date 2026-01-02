@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Calendar as CalIcon, ArrowLeft, Clock, CalendarCheck, History, AlertCircle } from 'lucide-react';
+import { Calendar as CalIcon, ArrowLeft, Clock, CalendarCheck, History } from 'lucide-react';
 import Link from 'next/link';
 import { formatMoney } from '../utils';
+import { Badge } from '../components/ui/Badge';
+import { Skeleton } from '../components/ui/Skeleton';
 
 interface Evento {
   ticker: string;
@@ -21,7 +23,6 @@ export default function ProventosPage() {
 
   useEffect(() => {
     setLoading(true);
-    // Carrega os dados da Agenda (Yahoo) e do Extrato (Banco Local) em paralelo
     Promise.all([
       fetch('http://localhost:5328/api/calendar').then(res => res.json()),
       fetch('http://localhost:5328/api/dividends/history').then(res => res.json())
@@ -34,7 +35,6 @@ export default function ProventosPage() {
     .catch(() => setLoading(false));
   }, []);
 
-  // Agrupamento por Mês para a Aba de Agenda
   const groupedEvents = events.reduce((acc, evt) => {
     const key = evt.date.substring(0, 7);
     if (!acc[key]) acc[key] = [];
@@ -48,15 +48,15 @@ export default function ProventosPage() {
     <div className="min-h-screen bg-[#0b0f19] text-slate-200 p-6 font-sans">
       <div className="max-w-3xl mx-auto">
         
-        {/* Header Compacto */}
+        {/* Header - Nomes originais */}
         <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="p-2.5 bg-slate-800/50 rounded-xl hover:bg-slate-700 transition-colors border border-slate-700">
+          <Link href="/" className="p-2.5 bg-slate-800/50 rounded-xl hover:bg-slate-700 transition-colors border border-slate-700/50">
             <ArrowLeft size={18} />
           </Link>
           <h1 className="text-2xl font-bold text-white tracking-tight">Proventos</h1>
         </div>
 
-        {/* Seleção de Abas: Agenda vs Extrato Real */}
+        {/* Seleção de Abas com as cores originais: Azul vs Esmeralda */}
         <div className="flex p-1 bg-slate-900/80 rounded-xl border border-slate-800 mb-8">
           <button 
             onClick={() => setActiveTab('agenda')}
@@ -77,15 +77,14 @@ export default function ProventosPage() {
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center py-20 text-slate-500 gap-3 animate-pulse">
-            <div className="w-10 h-10 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"/>
-            <p className="text-sm font-medium">Sincronizando dados...</p>
+          <div className="space-y-6">
+            <Skeleton className="h-6 w-32 bg-slate-800" />
+            <Skeleton className="h-20 w-full bg-slate-800" />
           </div>
         ) : (
           <div className="animate-in fade-in duration-500">
             {activeTab === 'agenda' ? (
-              /* --- VISÃO: AGENDA (PREVISÕES YAHOO) --- */
-              <div className="space-y-8">
+              <div className="space-y-10">
                 {months.map(month => {
                   const [y, m] = month.split('-');
                   const monthName = new Date(parseInt(y), parseInt(m)-1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -99,22 +98,32 @@ export default function ProventosPage() {
                           + {formatMoney(totalMonth)}
                         </span>
                       </div>
+
                       <div className="grid gap-3">
                         {groupedEvents[month].map((evt, i) => (
-                          <div key={i} className={`flex items-center justify-between p-4 rounded-xl border ${evt.is_estimate ? 'bg-slate-900/40 border-dashed border-slate-800 opacity-70' : 'bg-slate-900 border-emerald-900/30'}`}>
+                          <div key={i} className={`flex items-center justify-between p-4 rounded-xl border ${
+                            evt.is_estimate 
+                            ? 'bg-slate-900/40 border-dashed border-slate-800 opacity-70' 
+                            : 'bg-slate-900 border-emerald-900/30'
+                          }`}>
                             <div className="flex items-center gap-4">
-                              <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center border font-bold ${evt.is_estimate ? 'bg-slate-800 text-slate-500 border-slate-700' : 'bg-emerald-950 text-emerald-400 border-emerald-900'}`}>
-                                <span className="text-[10px] uppercase opacity-70">{evt.date.split('-')[1]}</span>
-                                <span className="text-lg">{evt.date.split('-')[2]}</span>
+                              {/* Box de Data "DIA XX" Compacto */}
+                              <div className="flex flex-col items-center justify-center min-w-[40px] py-1.5 bg-slate-950 rounded-lg border border-slate-800">
+                                <span className="text-[7px] font-bold text-slate-500 leading-none mb-0.5 uppercase tracking-tighter">DIA</span>
+                                <span className="text-base font-mono font-bold text-slate-200 leading-none">{evt.date.split('-')[2]}</span>
                               </div>
+                              
                               <div>
                                 <span className="font-bold text-white text-lg">{evt.ticker}</span>
-                                <p className="text-[11px] text-slate-500">{formatMoney(evt.value_per_share)} p/ cota</p>
+                                <p className="text-[11px] text-slate-500 font-medium">{formatMoney(evt.value_per_share)} p/ cota</p>
                               </div>
                             </div>
+
                             <div className="text-right">
-                              <p className={`font-mono font-bold text-lg ${evt.is_estimate ? 'text-slate-400' : 'text-emerald-400'}`}>{formatMoney(evt.total)}</p>
-                              <div className="text-[10px] flex items-center justify-end gap-1 font-medium text-slate-500">
+                              <p className={`font-mono font-bold text-lg ${evt.is_estimate ? 'text-slate-400' : 'text-emerald-400'}`}>
+                                {formatMoney(evt.total)}
+                              </p>
+                              <div className="text-[10px] flex items-center justify-end gap-1 font-bold text-slate-500 uppercase">
                                 {evt.is_estimate ? <Clock size={10}/> : <CalendarCheck size={10}/>} {evt.status}
                               </div>
                             </div>
@@ -126,7 +135,7 @@ export default function ProventosPage() {
                 })}
               </div>
             ) : (
-              /* --- VISÃO: EXTRATO REAL (DADOS CARIMBADOS) --- */
+              /* --- VISÃO: EXTRATO REAL --- */
               <div className="space-y-8">
                 {['A RECEBER', 'PAGO'].map(statusFilter => {
                   const items = history.filter(d => d.status === statusFilter);
@@ -134,7 +143,7 @@ export default function ProventosPage() {
 
                   return (
                     <div key={statusFilter}>
-                      <h3 className={`text-[10px] font-black uppercase tracking-widest mb-4 flex items-center gap-2 ${
+                      <h3 className={`text-[10px] font-bold uppercase tracking-widest mb-4 flex items-center gap-2 ${
                         statusFilter === 'PAGO' ? 'text-emerald-500' : 'text-amber-500'
                       }`}>
                         <div className={`w-1.5 h-1.5 rounded-full ${statusFilter === 'PAGO' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
@@ -169,13 +178,6 @@ export default function ProventosPage() {
                     </div>
                   );
                 })}
-
-                {history.length === 0 && (
-                  <div className="text-center py-20 text-slate-600">
-                    <History size={40} className="mx-auto mb-3 opacity-20" />
-                    <p>Nenhum provento foi carimbado oficialmente ainda.</p>
-                  </div>
-                )}
               </div>
             )}
           </div>
