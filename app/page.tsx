@@ -49,7 +49,6 @@ export default function Home() {
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
   
-  // Cálculo de Yield on Cost Médio (Proventos anuais est. / Custo Total)
   const yocMedio = data?.resumo?.TotalInvestido > 0 
     ? ((data.resumo.RendaMensal * 12) / data.resumo.TotalInvestido) * 100 
     : 0;
@@ -145,49 +144,52 @@ export default function Home() {
         {tab === 'Resumo' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
             
-            {/* KPI CARDS REORGANIZADOS (Substituído Renda por Yield on Cost Médio) */}
+            {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard 
-                title="Yield on Cost Médio" 
-                value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} 
-                subtext="Anual Est." 
-                icon={Percent} 
-                colorClass="text-purple-400"
-              />
+              <StatCard title="Yield on Cost Médio" value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} subtext="Anual Est." icon={Percent} colorClass="text-purple-400" />
               <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400"/>
               <StatCard title="Lucro / Prejuízo" value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Variação Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"} />
               
-              <div className="bg-slate-800/40 p-5 rounded-xl border border-slate-700/50 flex flex-col justify-between h-full relative overflow-hidden group hover:border-slate-600 transition-colors">
-                  <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity"><Target size={40} className="text-blue-400" /></div>
-                  <div className="flex justify-between items-start mb-2">
-                      <div className="flex flex-col">
-                          <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Top Pick</span>
-                          <p className="text-slate-400 text-[10px] uppercase font-bold">Melhor Oportunidade</p>
-                      </div>
-                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20"><TrendingUp size={20} className="text-blue-400"/></div>
+              {/* TOP PICK CARD COM LETREIRO */}
+              <div className="bg-[#0f172a] p-4 rounded-xl border border-slate-800 flex flex-col justify-between min-h-[115px] relative overflow-hidden group hover:border-slate-700 transition-all shadow-lg shadow-black/40">
+                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <Target size={32} className="text-blue-400" />
                   </div>
-                  <div>
+                  <div className="flex justify-between items-start">
+                      <div className="flex flex-col">
+                          <span className="text-[8px] uppercase font-bold text-slate-500 tracking-widest leading-none mb-1">Top Insight</span>
+                          {topCompras.length > 0 && (
+                             <div className="flex items-center gap-2 mt-1">
+                               <h3 className="text-xl font-bold text-white tracking-tight font-mono leading-none">{topCompras[0].ticker}</h3>
+                               <span className="text-[8px] text-green-400 font-bold flex items-center gap-0.5 uppercase bg-green-400/10 px-1.5 py-0.5 rounded border border-green-400/20">
+                                 <ArrowUpRight size={10}/> {topCompras[0].recomendacao}
+                               </span>
+                             </div>
+                          )}
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20"><TrendingUp size={14} className="text-blue-400"/></div>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-slate-800/50 overflow-hidden relative">
                       {topCompras.length > 0 ? (
-                        <div className="flex items-end gap-2">
-                          <h3 className="text-2xl font-bold text-white tracking-tight">{topCompras[0].ticker}</h3>
-                          <span className="text-xs text-green-400 mb-1.5 font-bold flex items-center"><ArrowUpRight size={12}/> {topCompras[0].recomendacao}</span>
+                        <div className="relative flex items-center">
+                          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0f172a] to-transparent z-10" />
+                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight italic whitespace-nowrap animate-marquee group-hover:pause">
+                            {topCompras[0].motivo}
+                          </p>
                         </div>
-                      ) : <p className="text-slate-500 text-sm">Sem sugestões.</p>}
+                      ) : <p className="text-slate-600 text-[8px] font-bold uppercase italic">Aguardando sinais...</p>}
                   </div>
               </div>
             </div>
 
-            {/* GRID PRINCIPAL */}
+            {/* GRID PRINCIPAL COM TRAVA DE SIMETRIA */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                <div className="h-[525px]">
                  <RiskRadar alertas={data?.alertas || []} />
                </div>
                <div className="lg:col-span-2 h-[525px]">
-                 <CategorySummary 
-                   ativos={data?.ativos || []} 
-                   categorias={data?.categorias || []} 
-                   onUpdate={() => refetch(true)} 
-                 />
+                 <CategorySummary ativos={data?.ativos || []} categorias={data?.categorias || []} onUpdate={() => refetch(true)} />
                </div>
             </div>
 
@@ -198,7 +200,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* ... Restante do código (Evolução, Radar, Tabelas) mantido ... */}
         {tab === 'Evolução' && <div className="animate-in fade-in h-[500px]"><HistoryChart data={history} /></div>}
         {tab === 'Radar' && <div className="h-[600px]"><RiskRadar alertas={data?.alertas || []} /></div>}
 
@@ -219,15 +220,7 @@ export default function Home() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {filteredAssets.length > 0 ? filteredAssets.map((ativo, index) => ( 
-                      <AssetRow 
-                        key={ativo.ticker} 
-                        ativo={ativo} 
-                        tab={tab} 
-                        onEdit={(a) => setEditingAsset(a)} 
-                        onViewNews={(ticker) => setNewsTicker(ticker)} 
-                        index={index} 
-                        total={filteredAssets.length} 
-                      />
+                      <AssetRow key={ativo.ticker} ativo={ativo} tab={tab} onEdit={(a) => setEditingAsset(a)} onViewNews={(ticker) => setNewsTicker(ticker)} index={index} total={filteredAssets.length} />
                   )) : <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum ativo encontrado.</td></tr>}
                 </tbody>
               </table>
@@ -239,7 +232,7 @@ export default function Home() {
         <AddAssetModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={() => refetch(true)} />
         <AssetNewsPanel ticker={newsTicker} onClose={() => setNewsTicker(null)} />
         
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.3 (Pro Insights)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.4 (Pro Insights)</div>
       </div>
     </main>
   );

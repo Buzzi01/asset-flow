@@ -51,9 +51,6 @@ class PortfolioService:
         if len(series) < window: return float(series.mean())
         return float(series.rolling(window=window).mean().iloc[-1])
 
-    # server/services.py
-# ... (mantenha os imports e o início da classe iguais)
-
     def update_prices(self):
         print("🔄 JOB: Atualizando Preços...", flush=True)
         session = Session()
@@ -123,6 +120,17 @@ class PortfolioService:
         finally:
             Session.remove()
 
+    def _prioridade_alerta(self, txt):
+        """Define a ordem de importância dos alertas no Radar."""
+        if "🚨" in txt: return 0  # Risco Crítico
+        if "🧠" in txt: return 1  # Valor Intrínseco
+        if "💎" in txt: return 2  # Oportunidade Técnica
+        if "⚓" in txt: return 3  # Suporte Histórico
+        if "🔻" in txt: return 4  # Suporte Perto
+        if "❗" in txt: return 5  # Ajuste de Carteira
+        if "🔥" in txt: return 6  # Alerta de Topo
+        return 7
+
     def get_dashboard_data(self):
         session = Session()
         try:
@@ -130,16 +138,16 @@ class PortfolioService:
             categories = session.query(Category).all()
             dolar_rate = self.get_usd_rate()
             
-            resumo = {"Total": 0, "RendaMensal": 0, "TotalInvestido": 0, "LucroTotal": 0}
-            cat_totals = {c.name: 0 for c in categories}
+            resumo = {"Total": 0.0, "RendaMensal": 0.0, "TotalInvestido": 0.0, "LucroTotal": 0.0}
+            cat_totals = {c.name: 0.0 for c in categories}
             cat_metas = {c.name: c.target_percent for c in categories}
             ativos_proc = []
 
+            # Primeiro Passo: Processamento Numérico Base
             for pos in positions:
                 asset = pos.asset
                 if not asset: continue 
 
-                # Busca o MarketData (Preço Atual)
                 mdata = asset.market_data[0] if asset.market_data else None
                 try:
                     qtd = float(pos.quantity or 0)
@@ -150,7 +158,8 @@ class PortfolioService:
                     else:
                         preco = pm if pm > 0 else 0.0
                         min_6m = 0.0
-                except: qtd=0; pm=0; preco=0; min_6m=0
+                except: 
+                    qtd=0; pm=0; preco=0; min_6m=0
 
                 fator = dolar_rate if asset.currency == 'USD' else 1.0
                 total_atual = qtd * preco * fator
@@ -162,7 +171,7 @@ class PortfolioService:
                     cat_totals[asset.category.name] += total_atual
                 
                 metrics = self._calculate_metrics(pos, preco, min_6m)
-                resumo["RendaMensal"] += metrics["renda_mensal_est"]
+                resumo["RendaMensal"] += metrics.get("renda_mensal_est", 0)
                 
                 ativos_proc.append({
                     "obj": pos, "total_atual": total_atual, "total_investido": total_investido,
@@ -172,6 +181,7 @@ class PortfolioService:
             resumo["LucroTotal"] = resumo["Total"] - resumo["TotalInvestido"]
             resumo.update(cat_totals)
 
+            # Segundo Passo: Inteligência de Estratégia e Alertas
             final_list = []
             alertas = []
             
@@ -179,25 +189,50 @@ class PortfolioService:
                 pos = item["obj"]
                 cat_name = pos.asset.category.name
                 total_cat = cat_totals.get(cat_name, 1)
+                
+                # Cálculos de Meta
                 pct_na_categoria = (item["total_atual"] / total_cat * 100) if total_cat > 0 else 0
                 meta_macro = cat_metas.get(cat_name, 0) / 100
                 meta_micro = (pos.target_percent or 0) / 100
                 meta_global_valor = resumo["Total"] * meta_macro * meta_micro
                 falta = meta_global_valor - item["total_atual"]
                 
-                rec_text, status, score, motivo, rsi = self._apply_strategy(pos, item["metrics"], falta, item["preco_atual"], item["min_6m"])
+                # Aplicação da Estratégia (Retorna Score e Motivos)
+                rec_text, status, score, motivo, rsi = self._apply_strategy(
+                    pos, item["metrics"], falta, item["preco_atual"], item["min_6m"]
+                )
                 
-                if pos.target_percent and pct_na_categoria > pos.target_percent * 1.5:
-                    alertas.append(f"⚠️ REBALANCEAR: {pos.asset.ticker} estourou a meta ({pct_na_categoria:.1f}%)")
-                
-                if rsi < 30:
-                     alertas.append(f"💎 OPORTUNIDADE: {pos.asset.ticker} com RSI em {rsi:.0f} (Sobrevenda)")
-                elif rsi > 75:
-                     alertas.append(f"📈 ALERTA: {pos.asset.ticker} esticado (RSI {rsi:.0f})")
+            # --- Geração de Alertas Baseada em Severidade ---
+                if cat_name not in ['Renda Fixa', 'Reserva']:
+                    if pos.target_percent and pos.target_percent > 0:
+                        excesso = pct_na_categoria / pos.target_percent
+                        if excesso > 2.0:
+                            alertas.append(f"🚨 REBALANCEAR URGENTE: {pos.asset.ticker} ({pct_na_categoria:.1f}% vs meta {pos.target_percent:.1f}%)")
+                        elif excesso > 1.5:
+                            alertas.append(f"❗ REBALANCEAR: {pos.asset.ticker} estourou a meta ({pct_na_categoria:.1f}%)")
 
-                if item["min_6m"] > 0 and item["preco_atual"] <= item["min_6m"] * 1.03:
-                     alertas.append(f"📉 MÍNIMA: {pos.asset.ticker} no fundo de 6 meses")
+                    if cat_name == "Ação":
+                        mg = item["metrics"].get("mg_graham", 0)
+                        if mg >= 50:
+                            alertas.append(f"🧠 FUNDAMENTO: {pos.asset.ticker} com margem de segurança alta (+{mg:.0f}%)")
+                    elif cat_name == "FII":
+                        pvp = item["metrics"].get("p_vp", 1)
+                        if 0 < pvp <= 0.85:
+                            alertas.append(f"🧠 FUNDAMENTO: {pos.asset.ticker} muito abaixo do VP ({pvp:.2f})")
 
+                    if rsi < 28:
+                        alertas.append(f"💎 OPORTUNIDADE TÉCNICA: {pos.asset.ticker} (RSI {rsi:.0f})")
+                    elif rsi > 78:
+                        if (pct_na_categoria / (pos.target_percent or 1)) >= 1.2:
+                            alertas.append(f"🔥 ESTICADO: {pos.asset.ticker} em região de topo (RSI {rsi:.0f})")
+
+                    if item["min_6m"] > 0:
+                        if item["preco_atual"] <= item["min_6m"] * 1.01:
+                            alertas.append(f"⚓ FUNDO: {pos.asset.ticker} na mínima de 6 meses")
+                        elif item["preco_atual"] <= item["min_6m"] * 1.03:
+                            alertas.append(f"🔻 PERTO DO FUNDO: {pos.asset.ticker} (6 meses)")
+
+                # Construção da lista de ativos para a tabela do Frontend
                 final_list.append({
                     "id": pos.asset.id, 
                     "ticker": pos.asset.ticker,
@@ -221,13 +256,30 @@ class PortfolioService:
                     **item["metrics"]
                 })
 
+            # Ordenações Finais
             final_list.sort(key=lambda x: x["score"], reverse=True)
-            grafico = [{"name": k, "value": v} for k, v in cat_totals.items() if v > 0]
-            cats_data = [{"name": c.name, "meta": c.target_percent} for c in categories]
+            alertas.sort(key=self._prioridade_alerta)
+
+            # Preparação de dados de gráficos e categorias
+            lista_grafico = [{"name": k, "value": v} for k, v in cat_totals.items() if v > 0]
+            cats_info = [{"name": c.name, "meta": c.target_percent} for c in categories]
             
-            return { "status": "Sucesso", "dolar": dolar_rate, "resumo": resumo, "grafico": grafico, "alertas": alertas, "ativos": final_list, "categorias": cats_data }
+            return { 
+                "status": "Sucesso", 
+                "dolar": dolar_rate, 
+                "resumo": resumo, 
+                "grafico": lista_grafico, 
+                "alertas": alertas, 
+                "ativos": final_list, 
+                "categorias": cats_info 
+            }
+        except Exception as e:
+            print(f"❌ Erro Crítico no Dashboard: {traceback.format_exc()}")
+            return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
+
+
 
     def _calculate_metrics(self, pos, preco, min_6m):
         m = {"vi_graham": 0, "mg_graham": 0, "magic_number": 0, "renda_mensal_est": 0, "p_vp": 0}
@@ -249,44 +301,17 @@ class PortfolioService:
                 if preco > 0: m["mg_graham"] = ((m["vi_graham"] - preco) / preco) * 100
         except: pass
         return m
-
+    
     def _apply_strategy(self, pos, metrics, falta, preco, min_6m):
         score = 0
         motivos = []
+
         if falta > 0: 
-            score += 40
+            score += 20
             motivos.append("⚖️ Abaixo da Meta (Rebalancear)")
         else: 
-            score -= 20
-
-        if pos.asset.category.name == "Ação":
-            mg = metrics.get("mg_graham", 0)
-            if mg > 50:
-                score += 35
-                motivos.append(f"💎 Graham: Super Desconto (+{mg:.0f}%)")
-            elif mg > 20:
-                score += 20
-                motivos.append(f"💰 Graham: Oportunidade (+{mg:.0f}%)")
-            elif mg < -20:
-                score -= 10
-                motivos.append(f"💸 Graham: Preço Esticado ({mg:.0f}%)")
-                
-        elif pos.asset.category.name == "FII":
-            pvp = metrics.get("p_vp", 1)
-            if pvp > 0 and pvp < 0.90:
-                score += 35
-                motivos.append(f"🏢 P/VP: Muito Descontado ({pvp:.2f})")
-            elif pvp > 0 and pvp < 1.00:
-                score += 20
-                motivos.append(f"🏬 P/VP: Abaixo do Patrimonial ({pvp:.2f})")
-            elif pvp > 1.15:
-                score -= 10
-                motivos.append(f"⚠️ P/VP: Ágio Elevado ({pvp:.2f})")
-
-            mn = metrics.get("magic_number", 0)
-            if mn > 0 and pos.quantity >= mn:
-                score += 10
-                motivos.append("❄️ Efeito Bola de Neve Ativo")
+            score -= 10
+            motivos.append("📊 Acima da Meta (Evitar Aporte)")
 
         rsi = 50
         mdata = pos.asset.market_data[0] if pos.asset.market_data else None
@@ -294,35 +319,79 @@ class PortfolioService:
             rsi = mdata.rsi_14 or 50
         
         if rsi < 30:
-            score += 25
-            motivos.append(f"📉 RSI: Sobrevenda Extrema ({rsi:.0f})")
+            score += 30
+            motivos.append(f"🔥 Sobrevenda Crítica (RSI {rsi:.0f})")
         elif rsi < 40:
             score += 15
-            motivos.append(f"↘️ RSI: Zona de Compra ({rsi:.0f})")
+            motivos.append(f"↘️ Desconto Técnico (RSI {rsi:.0f})")
+        elif rsi <= 70:
+            score += 0
+            motivos.append(f"⚖️ RSI Neutro ({rsi:.0f})")
         elif rsi > 70:
-            score -= 15
-            motivos.append(f"🔥 RSI: Sobrecomprado ({rsi:.0f})")
-        
-        if min_6m > 0 and preco <= min_6m * 1.02: 
-            score += 15
-            motivos.append("⚓ Na Mínima de 6 Meses")
+            score -= 35
+            motivos.append(f"⚠️ Esticado (RSI {rsi:.0f})")
 
-        if falta > 0:
-            if score >= 80: 
+        if pos.asset.category.name == "Ação":
+            mg = metrics.get("mg_graham", 0)
+            if mg > 50:
+                score += 30
+                motivos.append(f"💎 Graham: Margem Segura (+{mg:.0f}%)")
+            elif mg > 20:
+                score += 15
+                motivos.append(f"💰 Graham: Desconto (+{mg:.0f}%)")
+            elif mg < -20:
+                score -= 20
+                motivos.append(f"💸 Acima do Valor Justo")
+            else:
+                motivos.append("⚖️ Graham: Próximo ao Valor Justo")
+
+                
+        elif pos.asset.category.name == "FII":
+            pvp = metrics.get("p_vp", 1)
+            if pvp <=0.50:
+                score -= 50
+                motivos.append(f"🏚️ P/VP: Sinal de Alerta ({pvp:.2f})")
+            elif  pvp <= 0.90:
+                score += 30
+                motivos.append(f"🏢 P/VP: Grande Desconto ({pvp:.2f})")
+            elif pvp < 1.00:
+                score += 15
+                motivos.append(f"🏬 P/VP: Abaixo do Patrimonial ({pvp:.2f})")
+            elif pvp < 1.15:
+                score += 0
+                motivos.append(f"🏬 P/VP: Próximo ao Justo ({pvp:.2f})")
+            elif pvp > 1.15:
+                score -= 30
+                motivos.append(f"⚠️ P/VP: Ágio Elevado ({pvp:.2f})")
+
+            mn = metrics.get("magic_number", 0)
+            if mn > 0 and pos.quantity >= mn:
+                score += 5
+                motivos.append("❄️ Efeito Bola de Neve Ativo")
+
+        if min_6m > 0:
+            if preco <= min_6m * 1.015:
+                score += 20
+                motivos.append("⚓ Suporte: Na Mínima de 6 Meses")
+            elif preco <= min_6m * 1.05:
+                score += 10
+                motivos.append("📉 Perto das Mínimas")
+
+        if score >= 85:
                 status = "COMPRA_FORTE"
                 rec_text = "💎 OPORTUNIDADE"
-            elif score >= 50: 
+        elif score >= 65:
                 status = "COMPRAR"
-                rec_text = "COMPRAR"
-            elif score >= 20: 
+                rec_text = "🟢 COMPRAR"
+        elif score >= 40:
                 status = "AGUARDAR"
-                rec_text = "OBSERVAR"
-            else:
+                rec_text = "🟡 OBSERVAR"
+        elif score >= 20:
                 status = "NEUTRO"
-                rec_text = "NEUTRO"
+                rec_text = "⚪ NEUTRO"
         else:
-            status = "MANTER"
-            rec_text = "MANTER"
+                status = "EVITAR"
+                rec_text = "🔴 EVITAR"
             
         return rec_text, status, score, " • ".join(motivos), rsi
 

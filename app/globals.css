@@ -77,3 +77,18 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: inline-block;
+  padding-left: 10%;
+  animation: marquee 15s linear infinite;
+}
+
+.pause {
+  animation-play-state: paused;
+}
