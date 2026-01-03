@@ -79,7 +79,7 @@ class PortfolioService:
 
             # REGRA 3 (Continuação): O yfinance valida se existe. 
             # Se não existir na bolsa, ele retorna um erro ou DataFrame vazio.
-            batch_data = yf.download(download_list, period="2mo", group_by='ticker', threads=True, progress=False, auto_adjust=True)
+            batch_data = yf.download(download_list, period="6mo", group_by='ticker', threads=True, progress=False, auto_adjust=True)
 
             count_ok = 0
             for symbol, asset in tickers_map.items():
@@ -100,12 +100,14 @@ class PortfolioService:
 
                     # Se chegou aqui, o ativo existe na bolsa e é automático
                     current_price = float(hist['Close'].iloc[-1])
+                    absolute_min_6m = float(hist['Low'].min())
                     mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                     if not mdata:
                         mdata = MarketData(asset_id=asset.id)
                         session.add(mdata)
                     
                     mdata.price = current_price
+                    mdata.min_6m = absolute_min_6m
                     mdata.date = datetime.now()
                     count_ok += 1
 
@@ -185,10 +187,13 @@ class PortfolioService:
             final_list = []
             alertas = []
             
+            
             for item in ativos_proc:
                 pos = item["obj"]
                 cat_name = pos.asset.category.name
                 total_cat = cat_totals.get(cat_name, 1)
+                min_bruta = item["min_6m"]
+                preco_atual = item["preco_atual"]
                 
                 # Cálculos de Meta
                 pct_na_categoria = (item["total_atual"] / total_cat * 100) if total_cat > 0 else 0
@@ -226,11 +231,14 @@ class PortfolioService:
                         if (pct_na_categoria / (pos.target_percent or 1)) >= 1.2:
                             alertas.append(f"🔥 ESTICADO: {pos.asset.ticker} em região de topo (RSI {rsi:.0f})")
 
-                    if item["min_6m"] > 0:
-                        if item["preco_atual"] <= item["min_6m"] * 1.01:
-                            alertas.append(f"⚓ FUNDO: {pos.asset.ticker} na mínima de 6 meses")
-                        elif item["preco_atual"] <= item["min_6m"] * 1.03:
-                            alertas.append(f"🔻 PERTO DO FUNDO: {pos.asset.ticker} (6 meses)")
+                    if min_bruta > 0:
+                        moeda = "R$" if pos.asset.currency == 'BRL' else "$"
+    
+                        if preco_atual <= min_bruta * 1.01:
+                        # Aqui mostramos o valor bruto da mínima que estava no banco
+                            alertas.append(f"⚓ FUNDO: {pos.asset.ticker} na mínima de 6 meses (Ref: {moeda} {min_bruta:.2f})")
+                        elif preco_atual <= min_bruta * 1.03:
+                            alertas.append(f"🔻 PERTO DO FUNDO: {pos.asset.ticker} (Mínima: {moeda} {min_bruta:.2f})")
 
                 # Construção da lista de ativos para a tabela do Frontend
                 final_list.append({

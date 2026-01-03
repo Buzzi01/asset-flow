@@ -29,6 +29,8 @@ export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newsTicker, setNewsTicker] = useState<string | null>(null);
   const [updatingFundamentals, setUpdatingFundamentals] = useState(false);
+  const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
+  const [isRefetching, setIsRefetching] = useState(false);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
@@ -63,6 +65,22 @@ export default function Home() {
       refetch(true); 
     } catch (e) { console.error(e); } 
     finally { setUpdatingFundamentals(false); }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefetching(true); // 👈 Força o início da rotação
+    try {
+      await refetch(true);
+      setShowRefreshSuccess(true);
+
+      setTimeout(() => {
+        setShowRefreshSuccess(false);
+      }, 2000);
+    } catch (e) {
+      console.error("Erro ao atualizar:", e);
+    } finally {
+      setIsRefetching(false); // 👈 Para a rotação após o fim do fetch
+    }
   };
 
   const handleFixAsset = (assetId: number) => {
@@ -109,9 +127,20 @@ export default function Home() {
                 <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
                     <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : ''} />
                 </button>
-                <button onClick={() => refetch(true)} disabled={refreshing} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
-                    <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-                </button>
+              <button
+                onClick={handleManualRefresh}
+                disabled={refreshing || isRefetching || showRefreshSuccess}
+                className={`p-2 rounded-lg border transition-all duration-300 ${showRefreshSuccess
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  } disabled:opacity-50`}
+                title="Recarregar dados"
+              >
+                <RefreshCw
+                  size={16}
+                  className={`${(refreshing || isRefetching) ? 'animate-spin' : ''} ${showRefreshSuccess ? 'text-emerald-400' : ''}`}
+                />
+              </button>
              </div>
 
              <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2 min-w-[140px]">
