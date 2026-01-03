@@ -167,12 +167,12 @@ export const AddAssetModal = ({ isOpen, onClose, onSuccess }: AddAssetModalProps
                         onChange={handleChange}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
                       >
-                        <option value="Ação">Ação (BR/EUA)</option>
+                        <option value="Ação">Ação</option>
                         <option value="FII">Fundo Imobiliário (FII)</option>
-                        <option value="Internacional">ETF / Stocks</option>
+                        <option value="Internacional">Internacional</option>
                         <option value="Cripto">Criptomoeda</option>
                         <option value="Renda Fixa">Renda Fixa</option>
-                        <option value="Reserva">Reserva de Oportunidade</option>
+                        <option value="Reserva">Reserva Financeira</option>
                       </select>
                     </div>
 

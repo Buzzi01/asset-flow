@@ -26,7 +26,7 @@ class UpdateInput(BaseModel):
     dy: float = Field(default=0)
     lpa: float = Field(default=0)
     vpa: float = Field(default=0)
-    manual_price: float = Field(default=None)
+    current_price: float = Field(default=None)
 
 # --- Rotas ---
 
@@ -77,7 +77,7 @@ def update_asset():
             dy=body.dy, 
             lpa=body.lpa, 
             vpa=body.vpa,
-            current_price=body.manual_price # <--- Passando aqui
+            current_price=body.current_price
         )
         
         if result["status"] == "Sucesso":

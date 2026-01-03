@@ -120,11 +120,11 @@ export default function Home() {
                     {data ? money(data.resumo.Total) : '...'}
                 </p>
                 {data?.resumo?.RendaMensal > 0 && (
-                  <p className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1 leading-none">
+                  <div className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1 leading-none">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 
                     {money(data.resumo.RendaMensal)} 
                     <span className="text-[8px] opacity-70 ml-0.5 uppercase tracking-tighter">est.</span>
-                  </p>
+                  </div>
                 )}
              </div>
           </div>
@@ -200,7 +200,11 @@ export default function Home() {
           </div>
         )}
 
-        {tab === 'Evolução' && <div className="animate-in fade-in h-[500px]"><HistoryChart data={history} /></div>}
+        {tab === 'Evolução' && (
+          <div className="animate-in fade-in h-[400px] w-full">
+            <HistoryChart data={history} />
+          </div>
+        )}
         {tab === 'Radar' && <div className="h-[600px]"><RiskRadar alertas={data?.alertas || []} /></div>}
 
         {tab !== 'Resumo' && tab !== 'Radar' && tab !== 'Evolução' && (

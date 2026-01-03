@@ -152,11 +152,11 @@ class PortfolioService:
                 try:
                     qtd = float(pos.quantity or 0)
                     pm = float(pos.average_price or 0)
-                    if mdata and mdata.price is not None:
+                    if mdata and mdata.price is not None and mdata.price > 0:
                         preco = float(mdata.price)
                         min_6m = float(mdata.min_6m or 0)
                     else:
-                        preco = pm if pm > 0 else 0.0
+                        preco = 0.0
                         min_6m = 0.0
                 except: 
                     qtd=0; pm=0; preco=0; min_6m=0
@@ -491,7 +491,7 @@ class PortfolioService:
                     session.add(mdata)
                 
                 mdata.price = float(current_price)
-                mdata.date = date.today() # Usando date do seu import
+                mdata.date = datetime.now() # Usando date do seu import
                 mdata.min_6m = float(current_price) 
                 
             session.commit()
@@ -687,8 +687,9 @@ class PortfolioService:
             assets = session.query(Asset).join(Category).filter(
                 Category.name.in_(['Ação', 'FII', 'Internacional', 'ETF', 'BDR'])
             ).all()
-            tz = pytz.timezone("America/Sao_Paulo")
-            cutoff_date = datetime.now(tz) - timedelta(days=365)
+            
+            # 1. Definimos o corte de 365 dias sem fuso horário (naive)
+            cutoff_date = datetime.now() - timedelta(days=365)
             dolar_rate = self.get_usd_rate()
 
             for asset in assets:
@@ -698,6 +699,7 @@ class PortfolioService:
                     ticker_symbol = f"{asset.ticker}{suffix}"
                     y_asset = yf.Ticker(ticker_symbol)
                     
+                    # Busca de preço atualizada
                     current_price = 0
                     if hasattr(y_asset, 'fast_info') and y_asset.fast_info.last_price:
                          current_price = y_asset.fast_info.last_price
@@ -707,15 +709,21 @@ class PortfolioService:
 
                     if current_price <= 0: continue
 
+                    # --- CORREÇÃO DO DIVIDEND YIELD ---
                     divs = y_asset.dividends
                     total_divs_val = 0.0
+                    
                     if not divs.empty:
-                        if divs.index.tz is None: divs.index = divs.index.tz_localize(tz)
-                        else: divs.index = divs.index.tz_convert(tz)
+                        # 2. Removemos o fuso horário dos dividendos para bater com o cutoff_date
+                        divs.index = divs.index.tz_localize(None)
+                        
+                        # 3. Filtramos e somamos garantindo conversão float
                         divs_last_12m = divs[divs.index >= cutoff_date]
-                        total_divs_val = divs_last_12m.sum()
+                        total_divs_val = float(divs_last_12m.sum())
 
                     dy_calculated = total_divs_val / current_price if current_price > 0 else 0
+                    
+                    # Busca Info Fundamentalista
                     info = y_asset.info
                     lpa = info.get('trailingEps') or info.get('forwardEps') or 0
                     vpa = info.get('bookValue') or 0
@@ -728,8 +736,11 @@ class PortfolioService:
                     if pos:
                         if lpa != 0: pos.manual_lpa = round(lpa, 2)
                         if vpa != 0: pos.manual_vpa = round(vpa, 2)
-                        if dy_calculated > 0: pos.manual_dy = round(dy_calculated, 4)
+                        # Atualiza o DY se ele for maior que zero ou se já houver um valor
+                        if dy_calculated >= 0: 
+                            pos.manual_dy = round(dy_calculated, 4)
                         count += 1
+                        
                 except Exception as e:
                     print(f"   ⚠️ Falha em {asset.ticker}: {e}")
             
@@ -738,4 +749,5 @@ class PortfolioService:
         except Exception as e:
             session.rollback()
             return {"status": "Erro", "msg": str(e)}
-        finally: Session.remove()
+        finally: 
+            Session.remove()
