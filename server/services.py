@@ -714,9 +714,10 @@ class PortfolioService:
         
         session = Session()
         try:
+            # 1. Busca os FIIs da carteira
             my_fiis = session.query(Position).join(Asset).join(Category).filter(Category.name == "FII").all()
             
-            # Limpeza preventiva
+            # 🔥 LIMPEZA: Reseta os campos para garantir dados novos e evitar conflitos de tipos
             for p in my_fiis:
                 p.last_report_url = None
                 p.last_report_at = None
@@ -724,49 +725,63 @@ class PortfolioService:
             session.commit()
 
             count = 0
+            print(f"🔄 Iniciando Sincronia Multi-Categoria (7, 6, 1) para {len(my_fiis)} ativos...", flush=True)
+
             for pos in my_fiis:
                 asset = pos.asset
                 ticker = asset.ticker.replace(".SA", "").strip().upper()
                 
-                # Garante o CNPJ para a busca
+                # 2. Gestão de CNPJ
                 if not asset.cnpj or len(str(asset.cnpj)) < 14:
-                    cnpj = CNPJFinder.find_by_ticker(ticker)
-                    if cnpj:
-                        asset.cnpj = cnpj
+                    cnpj_encontrado = CNPJFinder.find_by_ticker(ticker)
+                    if cnpj_encontrado:
+                        asset.cnpj = cnpj_encontrado
                         session.commit()
 
-                if not asset.cnpj: continue
-                time.sleep(0.5) 
+                if not asset.cnpj:
+                    continue
+
+                time.sleep(1.0) # Polidez com a API da B3
                 
+                # 3. Busca o pacote de documentos (Gerencial, Mensal, Fato)
                 doc_package = B3FnetCrawler.get_documents_package(asset.cnpj)
                 
                 if doc_package:
-                    # Link principal (prioridade Gerencial)
+                    # Definimos o Gerencial como link principal para a coluna last_report_url
                     gerencial = doc_package.get('gerencial')
-                    pos.last_report_url = gerencial["link"] if gerencial else list(doc_package.values())[0]["link"]
+                    if gerencial:
+                        pos.last_report_url = gerencial["link"]
+                    else:
+                        # Se não tiver gerencial, pega o primeiro link disponível do pacote
+                        first_key = list(doc_package.keys())[0]
+                        pos.last_report_url = doc_package[first_key]["link"]
 
-                    # 📝 CONSTRUÇÃO DA STRING COM AS 3 DATAS
-                    datas = []
-                    if doc_package.get('gerencial'):
-                        datas.append(f"G: {doc_package['gerencial']['ref_date']}")
-                    if doc_package.get('mensal'):
-                        datas.append(f"M: {doc_package['mensal']['ref_date']}")
-                    if doc_package.get('fato_relevante'):
-                        # Para fatos, pegamos a data de ocorrência (dataEntrega simplificada)
-                        f_date = doc_package['fato_relevante']['date'].split(' ')[0]
-                        datas.append(f"F: {f_date}")
+                    # 4. SALVAR AS 3 DATAS no campo last_report_at (como String)
+                    # Criamos uma string legível: "G: MM/AAAA | M: MM/AAAA | F: DD/MM/YYYY"
+                    datas_resumo = []
+                    if doc_package.get('gerencial'): 
+                        datas_resumo.append(f"G: {doc_package['gerencial']['ref_date']}")
+                    if doc_package.get('mensal'): 
+                        datas_resumo.append(f"M: {doc_package['mensal']['ref_date']}")
+                    if doc_package.get('fato_relevante'): 
+                        datas_resumo.append(f"F: {doc_package['fato_relevante']['date'][:10]}")
                     
-                    pos.last_report_at = " | ".join(datas)
+                    pos.last_report_at = " | ".join(datas_resumo)
+
+                    # 5. Salva o JSON completo para o Modal usar
                     pos.last_report_type = json.dumps(doc_package)
                     
                     count += 1
-                    print(f"✅ {ticker}: {pos.last_report_at}", flush=True)
+                    print(f"   ✅ SUCESSO! Dados vinculados para {ticker}", flush=True)
+                else:
+                    print(f"   ❌ Sem documentos para {ticker}.", flush=True)
 
             session.commit()
-            return {"status": "Sucesso", "msg": f"Sincronizados {count} ativos com sucesso."}
+            return {"status": "Sucesso", "msg": f"Sincronização concluída! {count} ativos atualizados."}
             
         except Exception as e:
             session.rollback()
+            print(f"🔥 Erro crítico: {e}", flush=True)
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()

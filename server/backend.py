@@ -35,9 +35,20 @@ service = PortfolioService()
 # --- NOVA ROTA PARA SINCRONIZAÇÃO DE RELATÓRIOS CVM ---
 @app.route('/api/sync-reports', methods=['POST'])
 def sync_reports():
-    # Use a instância 'service' (minúsculo) que você já criou na linha 36
-    # E garanta que o nome da função no services.py é 'sync_reports_with_fnet'
-    return jsonify(service.sync_reports_with_fnet())
+    try:
+        logging.info("🚀 Iniciando sincronia manual de relatórios...")
+        # Chamamos o método que você já tem no services.py
+        result = service.sync_reports_with_fnet() 
+        
+        # Garante que o retorno seja JSON e status 200
+        return jsonify(result), 200
+    except Exception as e:
+        logging.error(f"❌ Erro na rota de sincronia: {str(e)}")
+        # Se der erro, retorna JSON com erro 500, evitando o envio de HTML do Flask
+        return jsonify({
+            "status": "Erro", 
+            "msg": f"Erro interno no servidor: {str(e)}"
+        }), 500
 
 def scheduled_update():
     with app.app_context():
