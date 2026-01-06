@@ -1,13 +1,13 @@
 'use client';
 import { useState } from 'react';
-import { 
-  TrendingUp, Wallet, DollarSign, Activity, 
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle, 
+import {
+  TrendingUp, Wallet, DollarSign, Activity,
+  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle,
   Brain, Calendar, Eye, EyeOff, Percent
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePrivacy } from './context/PrivacyContext';
-import { formatMoney } from './utils'; 
+import { formatMoney } from './utils';
 import { StatCard } from './components/StatCard';
 import { AssetRow } from './components/AssetRow';
 import { RiskRadar } from './components/RiskRadar';
@@ -15,9 +15,9 @@ import { HistoryChart } from './components/HistoryChart';
 import { CategorySummary } from './components/CategorySummary';
 import { EditModal } from './components/EditModal';
 import { AddAssetModal } from './components/AddAssetModal';
-import AssetNewsPanel from './components/AssetNewsPanel'; 
+import AssetNewsPanel from './components/AssetNewsPanel';
 import { useAssetData } from './hooks/useAssetData';
-import MonteCarloChart from './components/MonteCarloChart'; 
+import MonteCarloChart from './components/MonteCarloChart';
 import { AlertsButton } from './components/AlertsButton';
 
 export default function Home() {
@@ -29,6 +29,7 @@ export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newsTicker, setNewsTicker] = useState<string | null>(null);
   const [updatingFundamentals, setUpdatingFundamentals] = useState(false);
+  const [syncingReports, setSyncingReports] = useState(false); // Estágio de sincronização CVM
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
 
@@ -44,42 +45,59 @@ export default function Home() {
     { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
   ];
 
-  const filteredAssets = data?.ativos?.filter((a) => 
+  const filteredAssets = data?.ativos?.filter((a) =>
     tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab
   ).sort((a, b) => a.ticker.localeCompare(b.ticker)) || [];
 
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
   const lucroTotal = data?.resumo?.LucroTotal || 0;
-  
-  const yocMedio = data?.resumo?.TotalInvestido > 0 
-    ? ((data.resumo.RendaMensal * 12) / data.resumo.TotalInvestido) * 100 
+
+  const yocMedio = data?.resumo?.TotalInvestido > 0
+    ? ((data.resumo.RendaMensal * 12) / data.resumo.TotalInvestido) * 100
     : 0;
 
   const money = (val: number) => isHidden ? '••••••' : formatMoney(val);
+
+  // Função para sincronizar relatórios via CVM (Dados Abertos)
+  const handleSyncReports = async () => {
+    setSyncingReports(true);
+    try {
+      const response = await fetch('http://localhost:5328/api/sync-reports', { method: 'POST' });
+      const result = await response.json();
+      if (result.status === "Sucesso") {
+        alert(result.msg);
+        refetch(true);
+      } else {
+        alert("Erro: " + result.msg);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao conectar com o servidor para sincronizar relatórios.");
+    } finally {
+      setSyncingReports(false);
+    }
+  };
 
   const handleUpdateFundamentals = async () => {
     setUpdatingFundamentals(true);
     try {
       await fetch('http://localhost:5328/api/update-fundamentals', { method: 'POST' });
       alert("Sucesso! Inteligência atualizada.");
-      refetch(true); 
-    } catch (e) { console.error(e); } 
+      refetch(true);
+    } catch (e) { console.error(e); }
     finally { setUpdatingFundamentals(false); }
   };
 
   const handleManualRefresh = async () => {
-    setIsRefetching(true); // 👈 Força o início da rotação
+    setIsRefetching(true);
     try {
       await refetch(true);
       setShowRefreshSuccess(true);
-
-      setTimeout(() => {
-        setShowRefreshSuccess(false);
-      }, 2000);
+      setTimeout(() => setShowRefreshSuccess(false), 2000);
     } catch (e) {
       console.error("Erro ao atualizar:", e);
     } finally {
-      setIsRefetching(false); // 👈 Para a rotação após o fim do fetch
+      setIsRefetching(false);
     }
   };
 
@@ -97,7 +115,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20 relative">
-      
+
       {/* HEADER FIXO */}
       <div className="sticky top-0 z-30 bg-[#0b0f19]/95 backdrop-blur-md border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
@@ -105,34 +123,53 @@ export default function Home() {
             <div className="bg-blue-600 p-1.5 rounded-lg"><Wallet className="text-white" size={18} /></div>
             <h1 className="text-lg font-bold text-white tracking-tight">AssetFlow <span className="text-blue-500 text-xs font-normal ml-1">Pro</span></h1>
           </div>
-          
+
           <div className="flex items-center gap-3">
-             <div className="flex items-center gap-2">
-                <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 group">
-                    <Calendar size={16} className="text-blue-400" /> 
-                    <span className="hidden sm:inline">Proventos</span>
-                </Link>
-                <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20">
-                    <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
-                </button>
-             </div>
+            <div className="flex items-center gap-2">
+              <Link href="/agenda" className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-slate-700 group">
+                <Calendar size={16} className="text-blue-400" />
+                <span className="hidden sm:inline">Proventos</span>
+              </Link>
+              <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20">
+                <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
+              </button>
+            </div>
 
-             <div className="h-6 w-px bg-slate-800 mx-1"></div>
+            <div className="h-6 w-px bg-slate-800 mx-1"></div>
 
-             <div className="flex items-center gap-2">
-                <button onClick={togglePrivacy} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors">
-                    {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-                <AlertsButton onFixAsset={handleFixAsset} />
-                <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
-                    <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : ''} />
-                </button>
+            <div className="flex items-center gap-2">
+              <button onClick={togglePrivacy} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors">
+                {isHidden ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+
+              <AlertsButton onFixAsset={handleFixAsset} />
+
+              {/* BOTÃO DE SINCRONIZAÇÃO CVM */}
+              <button
+                onClick={handleSyncReports}
+                disabled={syncingReports}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50 group relative"
+                title="Sincronizar Relatórios CVM"
+              >
+                <Layers size={16} className={syncingReports ? 'animate-bounce text-blue-400' : 'text-slate-400'} />
+                {syncingReports && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                )}
+              </button>
+
+              <button onClick={handleUpdateFundamentals} disabled={updatingFundamentals} className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg border border-slate-700 disabled:opacity-50">
+                <Brain size={16} className={updatingFundamentals ? 'animate-pulse text-emerald-400' : ''} />
+              </button>
+
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshing || isRefetching || showRefreshSuccess}
                 className={`p-2 rounded-lg border transition-all duration-300 ${showRefreshSuccess
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                   } disabled:opacity-50`}
                 title="Recarregar dados"
               >
@@ -141,24 +178,24 @@ export default function Home() {
                   className={`${(refreshing || isRefetching) ? 'animate-spin' : ''} ${showRefreshSuccess ? 'text-emerald-400' : ''}`}
                 />
               </button>
-             </div>
+            </div>
 
-             <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2 min-w-[140px]">
-                <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider leading-none">Patrimônio</p>
-                <p className="text-lg font-bold text-white leading-tight mt-0.5">
-                    {data ? money(data.resumo.Total) : '...'}
-                </p>
-                {data?.resumo?.RendaMensal > 0 && (
-                  <div className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1 leading-none">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 
-                    {money(data.resumo.RendaMensal)} 
-                    <span className="text-[8px] opacity-70 ml-0.5 uppercase tracking-tighter">est.</span>
-                  </div>
-                )}
-             </div>
+            <div className="text-right hidden md:block border-l border-slate-800 pl-4 ml-2 min-w-[140px]">
+              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider leading-none">Patrimônio</p>
+              <p className="text-lg font-bold text-white leading-tight mt-0.5">
+                {data ? money(data.resumo.Total) : '...'}
+              </p>
+              {data?.resumo?.RendaMensal > 0 && (
+                <div className="text-[10px] text-emerald-500 font-bold mt-1 flex items-center justify-end gap-1 leading-none">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {money(data.resumo.RendaMensal)}
+                  <span className="text-[8px] opacity-70 ml-0.5 uppercase tracking-tighter">est.</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        
+
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar border-t border-slate-800/30">
           {categories.map((c) => (
             <button key={c.id} onClick={() => setTab(c.id)} className={`flex items-center gap-2 px-1 py-3 text-xs font-medium transition-all relative border-b-2 ${tab === c.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
@@ -169,57 +206,57 @@ export default function Home() {
       </div>
 
       <div className="max-w-7xl mx-auto p-4 md:p-6">
-        
+
         {tab === 'Resumo' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
-            
+
             {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard title="Yield on Cost Médio" value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} subtext="Anual Est." icon={Percent} colorClass="text-purple-400" />
-              <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400"/>
+              <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400" />
               <StatCard title="Lucro / Prejuízo" value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Variação Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"} />
-              
+
               {/* TOP PICK CARD COM LETREIRO */}
               <div className="bg-[#0f172a] p-4 rounded-xl border border-slate-800 flex flex-col justify-between min-h-[115px] relative overflow-hidden group hover:border-slate-700 transition-all shadow-lg shadow-black/40">
-                  <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Target size={32} className="text-blue-400" />
-                  </div>
-                  <div className="flex justify-between items-start">
-                      <div className="flex flex-col">
-                          <span className="text-[8px] uppercase font-bold text-slate-500 tracking-widest leading-none mb-1">Top Insight</span>
-                          {topCompras.length > 0 && (
-                             <div className="flex items-center gap-2 mt-1">
-                               <h3 className="text-xl font-bold text-white tracking-tight font-mono leading-none">{topCompras[0].ticker}</h3>
-                               <span className="text-[8px] text-green-400 font-bold flex items-center gap-0.5 uppercase bg-green-400/10 px-1.5 py-0.5 rounded border border-green-400/20">
-                                 <ArrowUpRight size={10}/> {topCompras[0].recomendacao}
-                               </span>
-                             </div>
-                          )}
+                <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Target size={32} className="text-blue-400" />
+                </div>
+                <div className="flex justify-between items-start">
+                  <div className="flex flex-col">
+                    <span className="text-[8px] uppercase font-bold text-slate-500 tracking-widest leading-none mb-1">Top Insight</span>
+                    {topCompras.length > 0 && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <h3 className="text-xl font-bold text-white tracking-tight font-mono leading-none">{topCompras[0].ticker}</h3>
+                        <span className="text-[8px] text-green-400 font-bold flex items-center gap-0.5 uppercase bg-green-400/10 px-1.5 py-0.5 rounded border border-green-400/20">
+                          <ArrowUpRight size={10} /> {topCompras[0].recomendacao}
+                        </span>
                       </div>
-                      <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20"><TrendingUp size={14} className="text-blue-400"/></div>
+                    )}
                   </div>
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20"><TrendingUp size={14} className="text-blue-400" /></div>
+                </div>
 
-                  <div className="mt-3 pt-2 border-t border-slate-800/50 overflow-hidden relative">
-                      {topCompras.length > 0 ? (
-                        <div className="relative flex items-center">
-                          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0f172a] to-transparent z-10" />
-                          <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight italic whitespace-nowrap animate-marquee group-hover:pause">
-                            {topCompras[0].motivo}
-                          </p>
-                        </div>
-                      ) : <p className="text-slate-600 text-[8px] font-bold uppercase italic">Aguardando sinais...</p>}
-                  </div>
+                <div className="mt-3 pt-2 border-t border-slate-800/50 overflow-hidden relative">
+                  {topCompras.length > 0 ? (
+                    <div className="relative flex items-center">
+                      <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0f172a] to-transparent z-10" />
+                      <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight italic whitespace-nowrap animate-marquee group-hover:pause">
+                        {topCompras[0].motivo}
+                      </p>
+                    </div>
+                  ) : <p className="text-slate-600 text-[8px] font-bold uppercase italic">Aguardando sinais...</p>}
+                </div>
               </div>
             </div>
 
             {/* GRID PRINCIPAL COM TRAVA DE SIMETRIA */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-               <div className="h-[525px]">
-                 <RiskRadar alertas={data?.alertas || []} />
-               </div>
-               <div className="lg:col-span-2 h-[525px]">
-                 <CategorySummary ativos={data?.ativos || []} categorias={data?.categorias || []} onUpdate={() => refetch(true)} />
-               </div>
+              <div className="h-[525px]">
+                <RiskRadar alertas={data?.alertas || []} />
+              </div>
+              <div className="lg:col-span-2 h-[525px]">
+                <CategorySummary ativos={data?.ativos || []} categorias={data?.categorias || []} onUpdate={() => refetch(true)} />
+              </div>
             </div>
 
             {/* MONTE CARLO */}
@@ -252,19 +289,19 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
-                  {filteredAssets.length > 0 ? filteredAssets.map((ativo, index) => ( 
-                      <AssetRow key={ativo.ticker} ativo={ativo} tab={tab} onEdit={(a) => setEditingAsset(a)} onViewNews={(ticker) => setNewsTicker(ticker)} index={index} total={filteredAssets.length} />
+                  {filteredAssets.length > 0 ? filteredAssets.map((ativo, index) => (
+                    <AssetRow key={ativo.ticker} ativo={ativo} tab={tab} onEdit={(a) => setEditingAsset(a)} onViewNews={(ticker) => setNewsTicker(ticker)} index={index} total={filteredAssets.length} />
                   )) : <tr><td colSpan={7} className="p-8 text-center text-slate-500">Nenhum ativo encontrado.</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
-        
+
         <EditModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onSave={() => refetch(true)} ativo={editingAsset} allAssets={data?.ativos || []} />
         <AddAssetModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={() => refetch(true)} />
         <AssetNewsPanel ticker={newsTicker} onClose={() => setNewsTicker(null)} />
-        
+
         <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.4 (Pro Insights)</div>
       </div>
     </main>

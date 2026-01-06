@@ -25,6 +25,7 @@ class Asset(Base):
     id = Column(Integer, primary_key=True)
     ticker = Column(String, unique=True, nullable=False)
     name = Column(String)
+    cnpj = Column(String, nullable=True)
     currency = Column(String, default="BRL")
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False) # Categoria é obrigatória
     
@@ -49,6 +50,10 @@ class Position(Base):
     manual_lpa = Column(Float, nullable=True)
     manual_vpa = Column(Float, nullable=True)
     manual_dy = Column(Float, nullable=True)
+
+    last_report_url = Column(String, nullable=True)
+    last_report_at = Column(String, nullable=True) 
+    last_report_type = Column(String, nullable=True)
     
     asset = relationship("Asset", back_populates="position")
     
