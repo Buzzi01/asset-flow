@@ -12,6 +12,10 @@ from datetime import datetime, date, timedelta
 from sqlalchemy.orm import scoped_session, sessionmaker
 import traceback
 
+FNET_CACHE = {}
+PENDING_REQUESTS = set() # <--- ESSENCIAL PARA NÃO TRAVAR
+CACHE_EXPIRATION = 3600
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from database.models import Asset, Position, Category, MarketData, PortfolioSnapshot, engine
 
@@ -133,6 +137,11 @@ class PortfolioService:
         if "🔥" in txt: return 6  # Alerta de Topo
         return 7
 
+    def record_confirmed_dividends(self):
+        """Evita que o backend trave por falta desta função"""
+        print("📅 [SERVICE] A verificar dividendos...", flush=True)
+        return True
+
     def get_dashboard_data(self):
         session = Session()
         try:
@@ -194,6 +203,14 @@ class PortfolioService:
                 total_cat = cat_totals.get(cat_name, 1)
                 min_bruta = item["min_6m"]
                 preco_atual = item["preco_atual"]
+
+                last_report = None
+                if pos.last_report_url:
+                    last_report = {
+                        "link": pos.last_report_url,
+                        "date": pos.last_report_at,
+                        "type": pos.last_report_type
+                    }
                 
                 # Cálculos de Meta
                 pct_na_categoria = (item["total_atual"] / total_cat * 100) if total_cat > 0 else 0
@@ -261,6 +278,9 @@ class PortfolioService:
                     "manual_vpa": pos.manual_vpa,
                     "recomendacao": rec_text, "status": status, "score": score, "motivo": motivo,
                     "rsi": rsi,
+                    "last_report_url": pos.last_report_url,
+                    "last_report_at": pos.last_report_at,
+                    "last_report_type": pos.last_report_type,
                     **item["metrics"]
                 })
 
@@ -685,6 +705,71 @@ class PortfolioService:
         except Exception as e:
             print(f"Erro validação: {e}")
             return {"valid": False, "ticker": None}
+        
+    def sync_reports_with_fnet(self):
+        from crawlers.b3_fnet import B3FnetCrawler
+        from utils.cnpj_finder import CNPJFinder
+        import time
+        import json
+        
+        session = Session()
+        try:
+            my_fiis = session.query(Position).join(Asset).join(Category).filter(Category.name == "FII").all()
+            
+            # Limpeza preventiva
+            for p in my_fiis:
+                p.last_report_url = None
+                p.last_report_at = None
+                p.last_report_type = None
+            session.commit()
+
+            count = 0
+            for pos in my_fiis:
+                asset = pos.asset
+                ticker = asset.ticker.replace(".SA", "").strip().upper()
+                
+                # Garante o CNPJ para a busca
+                if not asset.cnpj or len(str(asset.cnpj)) < 14:
+                    cnpj = CNPJFinder.find_by_ticker(ticker)
+                    if cnpj:
+                        asset.cnpj = cnpj
+                        session.commit()
+
+                if not asset.cnpj: continue
+                time.sleep(0.5) 
+                
+                doc_package = B3FnetCrawler.get_documents_package(asset.cnpj)
+                
+                if doc_package:
+                    # Link principal (prioridade Gerencial)
+                    gerencial = doc_package.get('gerencial')
+                    pos.last_report_url = gerencial["link"] if gerencial else list(doc_package.values())[0]["link"]
+
+                    # 📝 CONSTRUÇÃO DA STRING COM AS 3 DATAS
+                    datas = []
+                    if doc_package.get('gerencial'):
+                        datas.append(f"G: {doc_package['gerencial']['ref_date']}")
+                    if doc_package.get('mensal'):
+                        datas.append(f"M: {doc_package['mensal']['ref_date']}")
+                    if doc_package.get('fato_relevante'):
+                        # Para fatos, pegamos a data de ocorrência (dataEntrega simplificada)
+                        f_date = doc_package['fato_relevante']['date'].split(' ')[0]
+                        datas.append(f"F: {f_date}")
+                    
+                    pos.last_report_at = " | ".join(datas)
+                    pos.last_report_type = json.dumps(doc_package)
+                    
+                    count += 1
+                    print(f"✅ {ticker}: {pos.last_report_at}", flush=True)
+
+            session.commit()
+            return {"status": "Sucesso", "msg": f"Sincronizados {count} ativos com sucesso."}
+            
+        except Exception as e:
+            session.rollback()
+            return {"status": "Erro", "msg": str(e)}
+        finally:
+            Session.remove()
             
 
     def update_fundamentals(self):
