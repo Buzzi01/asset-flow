@@ -15,12 +15,13 @@ from routes.alerts import alerts_bp
 from routes.dividends import dividends_bp
 from routes.maintenance import maintenance_bp
 from services import PortfolioService
+from utils.cvm_processor import CVMProcessor # 👈 Importação necessária
 
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 CORS(app)
 
-# Registro de Rotas (Blueprints que você já tem)
+# Registro de Rotas
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(assets_bp)
 app.register_blueprint(news_bp)
@@ -32,23 +33,46 @@ app.register_blueprint(maintenance_bp)
 # Instância única do serviço
 service = PortfolioService()
 
-# --- NOVA ROTA PARA SINCRONIZAÇÃO DE RELATÓRIOS CVM ---
+# --- ROTA ATUALIZADA PARA SINCRONIZAÇÃO CVM E FNET ---
 @app.route('/api/sync-reports', methods=['POST'])
 def sync_reports():
     try:
-        logging.info("🚀 Iniciando sincronia manual de relatórios...")
-        # Chamamos o método que você já tem no services.py
-        result = service.sync_reports_with_fnet() 
+        logging.info("🚀 Iniciando sincronia manual...")
         
-        # Garante que o retorno seja JSON e status 200
-        return jsonify(result), 200
-    except Exception as e:
-        logging.error(f"❌ Erro na rota de sincronia: {str(e)}")
-        # Se der erro, retorna JSON com erro 500, evitando o envio de HTML do Flask
+        # 1. Sincroniza FIIs (FNET)
+        fnet_result = service.sync_reports_with_fnet() 
+        
+        # 2. Sincroniza Ações (CVM)
+        # IMPORTANTE: Buscamos direto do banco para evitar erros de dicionário
+        from database.models import Session, Asset
+        db_session = Session()
+        count_cvm = 0
+        
+        try:
+            # Pegamos todos os ativos que são Ação e possuem cvm_code preenchido
+            acoes_cvm = db_session.query(Asset).filter(
+                Asset.cvm_code != None,
+                Asset.cvm_code != ""
+            ).all()
+
+            for acao in acoes_cvm:
+                logging.info(f"📊 Processando CVM: {acao.ticker} ({acao.cvm_code})")
+                # Chama o motor para baixar o ZIP e gerar a análise
+                CVMProcessor.get_dashboard_data(acao.cvm_code)
+                count_cvm += 1
+            
+            db_session.commit()
+        finally:
+            db_session.close()
+
         return jsonify({
-            "status": "Erro", 
-            "msg": f"Erro interno no servidor: {str(e)}"
-        }), 500
+            "status": "Sucesso", 
+            "msg": f"FIIs: {fnet_result.get('msg')}. CVM: {count_cvm} ações atualizadas."
+        }), 200
+
+    except Exception as e:
+        logging.error(f"❌ Erro na sincronia: {str(e)}")
+        return jsonify({"status": "Erro", "msg": str(e)}), 500
 
 def scheduled_update():
     with app.app_context():
@@ -56,31 +80,26 @@ def scheduled_update():
             logging.info("🔄 Iniciando manutenção automática...")
             service.update_prices()
             service.take_daily_snapshot()
-            # Certifique-se que esta função existe no seu services.py atual
             if hasattr(service, 'record_confirmed_dividends'):
                 service.record_confirmed_dividends()
             logging.info("✅ Manutenção automática concluída.")
         except Exception as e:
             logging.error(f"❌ Erro no agendador: {e}")
 
-# Configuração do Agendador (APScheduler)
+# Configuração do Agendador
 scheduler = BackgroundScheduler()
 if not scheduler.running:
-    # Roda a cada 60 minutos
     scheduler.add_job(func=scheduled_update, trigger="interval", minutes=60)
     scheduler.start()
 
 def initial_background_update():
-    """Roda uma atualização 5 segundos após o boot para não travar a inicialização"""
     time.sleep(5) 
     scheduled_update()
 
 if __name__ == '__main__':
-    # Thread para processamento inicial sem travar o Flask
     boot_thread = threading.Thread(target=initial_background_update)
     boot_thread.daemon = True 
     boot_thread.start()
     
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    # Porta 5328 conforme seu padrão
     app.run(host='0.0.0.0', port=5328, debug=debug_mode, use_reloader=False)

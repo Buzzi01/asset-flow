@@ -6,6 +6,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from services import PortfolioService
+from utils.cvm_processor import CVMProcessor
 
 assets_bp = Blueprint('assets', __name__)
 service = PortfolioService()
@@ -119,3 +120,25 @@ def delete_asset():
     service = PortfolioService()
     result = service.delete_asset(asset_id)
     return jsonify(result)
+
+@assets_bp.route('/api/assets')
+def get_assets():
+    try:
+        assets = service.get_all_assets() 
+        results = []
+        for asset in assets:
+            asset_dict = asset.to_dict()
+            # Verifica se é Ação e se tem o código CVM preenchido no banco
+            if getattr(asset, 'tipo', '') == 'Ação' and getattr(asset, 'cvm_code', None):
+                try:
+                    # CHAMADA CORRETA:
+                    asset_dict['fundamentalist_data'] = CVMProcessor.get_dashboard_data(asset.cvm_code)
+                except Exception as e:
+                    print(f"Erro CVM {asset.ticker}: {e}")
+                    asset_dict['fundamentalist_data'] = None
+            else:
+                asset_dict['fundamentalist_data'] = None
+            results.append(asset_dict)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"status": "Erro", "msg": str(e)}), 500

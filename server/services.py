@@ -257,11 +257,20 @@ class PortfolioService:
                         elif preco_atual <= min_bruta * 1.03:
                             alertas.append(f"🔻 PERTO DO FUNDO: {pos.asset.ticker} (Mínima: {moeda} {min_bruta:.2f})")
 
+                fundamentalist_info = None
+                if cat_name == 'Ação' and pos.asset.cvm_code:
+                    try:
+                        # Apenas lê o que já foi salvo durante a sincronização
+                        fundamentalist_info = json.loads(pos.last_report_type)
+                    except:
+                        fundamentalist_info = None
+
                 # Construção da lista de ativos para a tabela do Frontend
                 final_list.append({
                     "id": pos.asset.id, 
                     "ticker": pos.asset.ticker,
                     "tipo": cat_name,
+                    "cvm_code": pos.asset.cvm_code,
                     "qtd": pos.quantity,
                     "pm": pos.average_price,
                     "meta": pos.target_percent,
@@ -281,6 +290,7 @@ class PortfolioService:
                     "last_report_url": pos.last_report_url,
                     "last_report_at": pos.last_report_at,
                     "last_report_type": pos.last_report_type,
+                    "fundamentalist_data": fundamentalist_info,
                     **item["metrics"]
                 })
 
@@ -709,79 +719,78 @@ class PortfolioService:
     def sync_reports_with_fnet(self):
         from crawlers.b3_fnet import B3FnetCrawler
         from utils.cnpj_finder import CNPJFinder
-        import time
+        from utils.cvm_finder import CVMFinder 
+        from utils.cvm_processor import CVMProcessor
         import json
-        
+        import time
+
         session = Session()
         try:
-            # 1. Busca os FIIs da carteira
-            my_fiis = session.query(Position).join(Asset).join(Category).filter(Category.name == "FII").all()
-            
-            # 🔥 LIMPEZA: Reseta os campos para garantir dados novos e evitar conflitos de tipos
-            for p in my_fiis:
-                p.last_report_url = None
-                p.last_report_at = None
-                p.last_report_type = None
-            session.commit()
+            # 1. Busca ativos (FIIs e Ações)
+            assets_to_sync = session.query(Position).join(Asset).join(Category).filter(
+                Category.name.in_(["FII", "Ação"])
+            ).all()
 
-            count = 0
-            print(f"🔄 Iniciando Sincronia Multi-Categoria (7, 6, 1) para {len(my_fiis)} ativos...", flush=True)
+            count_fii = 0
+            count_acao = 0
 
-            for pos in my_fiis:
+            for pos in assets_to_sync:
                 asset = pos.asset
                 ticker = asset.ticker.replace(".SA", "").strip().upper()
+                is_fii = asset.category.name == "FII"
                 
-                # 2. Gestão de CNPJ
+                # --- PASSO 1: GARANTIR CNPJ ---
                 if not asset.cnpj or len(str(asset.cnpj)) < 14:
                     cnpj_encontrado = CNPJFinder.find_by_ticker(ticker)
                     if cnpj_encontrado:
                         asset.cnpj = cnpj_encontrado
-                        session.commit()
+                        session.flush()
 
-                if not asset.cnpj:
-                    continue
+                # --- PASSO 2: GARANTIR CÓDIGO CVM (Para Ações) ---
+                if not is_fii and asset.cnpj and (not asset.cvm_code or asset.cvm_code == ""):
+                    cnpj_limpo = "".join(filter(str.isdigit, str(asset.cnpj)))
+                    codigo_cvm = CVMFinder.find_code(cnpj_limpo)
+                    if codigo_cvm:
+                        asset.cvm_code = codigo_cvm
+                        print(f"✅ Código CVM Vinculado: {ticker} -> {codigo_cvm}")
+                        session.flush()
 
-                time.sleep(1.0) # Polidez com a API da B3
-                
-                # 3. Busca o pacote de documentos (Gerencial, Mensal, Fato)
-                doc_package = B3FnetCrawler.get_documents_package(asset.cnpj)
-                
-                if doc_package:
-                    # Definimos o Gerencial como link principal para a coluna last_report_url
-                    gerencial = doc_package.get('gerencial')
-                    if gerencial:
-                        pos.last_report_url = gerencial["link"]
-                    else:
-                        # Se não tiver gerencial, pega o primeiro link disponível do pacote
-                        first_key = list(doc_package.keys())[0]
-                        pos.last_report_url = doc_package[first_key]["link"]
+                # --- PASSO 3: PROCESSAMENTO ---
+                if is_fii and asset.cnpj:
+                    # Tenta chamar a função (garantindo o nome exato do b3_fnet.py)
+                    doc_package = B3FnetCrawler.get_documents_package(asset.cnpj)
+                    if doc_package:
+                        pos.last_report_type = json.dumps(doc_package)
+                        gerencial = doc_package.get('gerencial')
+                        pos.last_report_url = gerencial["link"] if gerencial else list(doc_package.values())[0]["link"]
+                        datas = [f"{k[0].upper()}: {v['ref_date']}" for k, v in doc_package.items() if 'ref_date' in v]
+                        pos.last_report_at = " | ".join(datas)
+                        count_fii += 1
+                    time.sleep(0.5)
 
-                    # 4. SALVAR AS 3 DATAS no campo last_report_at (como String)
-                    # Criamos uma string legível: "G: MM/AAAA | M: MM/AAAA | F: DD/MM/YYYY"
-                    datas_resumo = []
-                    if doc_package.get('gerencial'): 
-                        datas_resumo.append(f"G: {doc_package['gerencial']['ref_date']}")
-                    if doc_package.get('mensal'): 
-                        datas_resumo.append(f"M: {doc_package['mensal']['ref_date']}")
-                    if doc_package.get('fato_relevante'): 
-                        datas_resumo.append(f"F: {doc_package['fato_relevante']['date'][:10]}")
-                    
-                    pos.last_report_at = " | ".join(datas_resumo)
-
-                    # 5. Salva o JSON completo para o Modal usar
-                    pos.last_report_type = json.dumps(doc_package)
-                    
-                    count += 1
-                    print(f"   ✅ SUCESSO! Dados vinculados para {ticker}", flush=True)
-                else:
-                    print(f"   ❌ Sem documentos para {ticker}.", flush=True)
+                elif not is_fii and asset.cvm_code:
+                    try:
+                        # 1. Gera a análise pesada apenas UMA vez aqui
+                        analise_completa = CVMProcessor.get_dashboard_data(asset.cvm_code)
+                        
+                        if analise_completa:
+                            # 2. SALVA o JSON pronto no banco de dados
+                            pos.last_report_type = json.dumps(analise_completa)
+                            pos.last_report_at = f"Balanço: {analise_completa['ticker_info']['ultimo_periodo']}"
+                            count_acao += 1
+                            print(f"📊 Análise persistida no banco: {ticker}")
+                    except Exception as e:
+                        print(f"⚠️ Erro ao processar CVM para {ticker}: {e}")
 
             session.commit()
-            return {"status": "Sucesso", "msg": f"Sincronização concluída! {count} ativos atualizados."}
-            
+            return {
+                "status": "Sucesso", 
+                "msg": f"FIIs: {count_fii} ativos. Ações: {count_acao} fundamentadas."
+            }
+
         except Exception as e:
             session.rollback()
-            print(f"🔥 Erro crítico: {e}", flush=True)
+            print(f"🔥 Erro na sincronia: {traceback.format_exc()}")
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
