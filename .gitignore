@@ -43,3 +43,21 @@ next-env.d.ts
 # python
 __pycache__/
 *.pyc
+
+# python venv
+venv/
+.venv/
+env/
+
+# python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# docker
+*.log
+docker-data/
+
+# databases
+*.db
+server/backups/
