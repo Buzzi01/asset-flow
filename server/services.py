@@ -547,6 +547,18 @@ class PortfolioService:
         """
         Cria um novo ativo e sua posição inicial.
         """
+        raw_ticker = ticker.upper().strip()
+        
+        # Lógica Inteligente de Moeda
+        if raw_ticker.endswith(".SA"):
+            currency = "BRL"  # Ex: WEGE3.SA, BDRs
+        elif raw_ticker.endswith("-USD"):
+            currency = "USD"  # Ex: BTC-USD
+        elif category_name == "Internacional":
+            currency = "USD"  # Ex: AAPL, MSFT (sem .SA)
+        else:
+            currency = "BRL"  # Padrão para Ação, FII, Cripto genérico, ETF
+
         ticker = ticker.upper().strip().replace(".SA", "")
         print(f"🆕 JOB: Criando novo Ativo: {ticker}")
         session = Session()
@@ -557,7 +569,6 @@ class PortfolioService:
             category = session.query(Category).filter_by(name=category_name).first()
             if not category: category = session.query(Category).first()
             
-            currency = "USD" if category.name in ["Internacional", "Cripto"] else "BRL"
             new_asset = Asset(ticker=ticker, category_id=category.id, currency=currency)
             session.add(new_asset)
             session.flush() # Garante que o new_asset.id seja gerado antes da Position

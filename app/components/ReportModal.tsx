@@ -2,13 +2,14 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    FileText, Info, Layers, X, ExternalLink, Calendar,
-    TrendingUp, TrendingDown, Activity
+    FileText, Layers, X, ExternalLink, Calendar,
+    TrendingUp, TrendingDown, Activity, ShieldAlert,
+    BarChart3, Wallet, PieChart, Coins
 } from 'lucide-react';
 import { formatMoney } from '../utils';
 import { usePrivacy } from '../context/PrivacyContext';
 
-// Interface para os dados fundamentalistas vindos do motor CVM
+// Interface atualizada para incluir FCL e EBITDA nos tipos
 interface FundamentalistData {
     ticker_info: {
         ultimo_periodo: string;
@@ -18,15 +19,18 @@ interface FundamentalistData {
         titulo: string;
         valor?: number;
         valor_formatado?: string;
+        subtitulo?: string;
         yoy?: number;
         qoq?: number;
         status?: 'positivo' | 'negativo';
-        tipo?: string;
+        tipo?: 'risco' | 'rentabilidade' | 'caixa' | 'eficiencia' | string;
     }>;
     evolucao_grafico: Array<{
         label: string;
         receita: number;
         lucro: number;
+        fco?: number;
+        fcl?: number; // Suporte para Fluxo de Caixa Livre no futuro
     }>;
 }
 
@@ -37,6 +41,8 @@ const PrivateValue = ({ value, isHidden, className = "" }: { value: string | num
 const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () => void, ativo: any }) => {
     const [mounted, setMounted] = useState(false);
     const [activeTab, setActiveTab] = useState<'docs' | 'saude'>('docs');
+    const [subTab, setSubTab] = useState<'eficiencia' | 'divida' | 'rentabilidade'>('eficiencia');
+    const [hoveredBar, setHoveredBar] = useState<number | null>(null);
     const { isHidden } = usePrivacy() as any;
 
     useEffect(() => {
@@ -47,27 +53,20 @@ const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () 
 
     if (!isOpen || !ativo || !mounted) return null;
 
-    // --- LÓGICA DE EXTRAÇÃO DE DADOS ---
     let reports: any[] = [];
     let fundamentalist: FundamentalistData | null = ativo.fundamentalist_data || null;
 
     try {
         const rawData = ativo.last_report_type;
-
-        // Verifica se a coluna last_report_type contém o JSON de fundamentos ou lista de documentos
         if (typeof rawData === 'string' && rawData.trim().startsWith('{')) {
             const parsedData = JSON.parse(rawData);
-
             if (ativo.tipo === 'Ação') {
-                // Se for ação, o JSON principal é a análise fundamentalista
                 fundamentalist = parsedData as FundamentalistData;
             } else {
-                // Se for FII, mapeia como lista de documentos (Gerencial, Mensal, etc)
                 reports = Object.values(parsedData);
             }
         }
-
-        // Fallback: se não houver JSON mas houver uma URL direta
+        // Fallback para quando não há JSON, mas há URL
         if (reports.length === 0 && ativo.last_report_url) {
             reports = [{
                 link: ativo.last_report_url,
@@ -76,12 +75,31 @@ const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () 
             }];
         }
     } catch (e) {
-        console.error("Erro ao processar dados de relatórios/fundamentos:", e);
+        console.error("Erro ao processar dados:", e);
     }
+
+    // Filtro inteligente para distribuir os cards nas sub-abas
+    const filteredCards = fundamentalist?.cards_indicadores.filter(card => {
+        if (subTab === 'eficiencia') return !card.tipo || card.tipo === 'eficiencia';
+        // Agrupa Risco (Dívida) e Caixa (FCO/FCL) na mesma aba para análise conjunta
+        if (subTab === 'divida') return card.tipo === 'risco' || card.tipo === 'caixa';
+        if (subTab === 'rentabilidade') return card.tipo === 'rentabilidade';
+        return true;
+    });
+
+    const getIndicatorStyles = (tipo?: string) => {
+        switch (tipo) {
+            case 'risco': return { border: 'border-orange-500/20', bg: 'bg-orange-500/5', icon: <ShieldAlert size={14} className="text-orange-400" /> };
+            case 'rentabilidade': return { border: 'border-purple-500/20', bg: 'bg-purple-500/5', icon: <PieChart size={14} className="text-purple-400" /> };
+            // Adicionado estilo específico para Caixa (verde/emerald) para diferenciar de Risco
+            case 'caixa': return { border: 'border-emerald-500/20', bg: 'bg-emerald-500/5', icon: <Coins size={14} className="text-emerald-400" /> };
+            default: return { border: 'border-slate-700', bg: 'bg-slate-800/40', icon: <BarChart3 size={14} className="text-slate-500" /> };
+        }
+    };
 
     return createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-[#0f172a] w-full max-w-md rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            <div className="bg-[#0f172a] w-full max-w-md rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
                 {/* HEADER */}
                 <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-900/50">
@@ -91,7 +109,7 @@ const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () 
                         </div>
                         <div>
                             <h3 className="text-white font-bold text-sm tracking-tight">{ativo.ticker}</h3>
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Análise de Ativo</p>
+                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Terminal Fundamentalista</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
@@ -99,121 +117,206 @@ const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () 
                     </button>
                 </div>
 
-                {/* SELECTOR DE ABAS */}
+                {/* ABAS PRINCIPAIS */}
                 <div className="flex p-1 bg-slate-900 border-b border-slate-800">
-                    <button
-                        onClick={() => setActiveTab('saude')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase transition-all rounded-md ${activeTab === 'saude' ? 'bg-slate-800 text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                        <Activity size={14} /> Saúde Financeira
+                    <button onClick={() => setActiveTab('saude')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase transition-all rounded-md ${activeTab === 'saude' ? 'bg-slate-800 text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
+                        <Activity size={14} /> Saúde e Risco
                     </button>
-                    <button
-                        onClick={() => setActiveTab('docs')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase transition-all rounded-md ${activeTab === 'docs' ? 'bg-slate-800 text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
+                    <button onClick={() => setActiveTab('docs')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase transition-all rounded-md ${activeTab === 'docs' ? 'bg-slate-800 text-blue-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}>
                         <FileText size={14} /> Documentos
                     </button>
                 </div>
 
                 {/* CONTEÚDO */}
                 <div className="p-4 overflow-y-auto space-y-4 custom-scrollbar flex-1">
-
-                    {/* ABA: SAÚDE FINANCEIRA (FUNDAMENTOS CVM) */}
                     {activeTab === 'saude' && (
-                        <div className="space-y-4 animate-in slide-in-from-right-2 duration-300">
+                        <div className="space-y-6 animate-in slide-in-from-right-2 duration-300">
+
+                            {/* SUB-ABAS (PILLS) */}
+                            <div className="flex gap-1 p-1 bg-slate-900/50 rounded-lg border border-slate-800">
+                                {[
+                                    { id: 'eficiencia', label: 'Eficiência', icon: <BarChart3 size={12} /> },
+                                    { id: 'divida', label: 'Dívida & Caixa', icon: <ShieldAlert size={12} /> },
+                                    { id: 'rentabilidade', label: 'Rentabilidade', icon: <PieChart size={12} /> }
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setSubTab(tab.id as any)}
+                                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase transition-all rounded-md border ${subTab === tab.id
+                                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-400'
+                                                : 'border-transparent text-slate-500 hover:text-slate-300'
+                                            }`}
+                                    >
+                                        {tab.icon} {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
                             {fundamentalist ? (
-                                <>
-                                    <div className="grid grid-cols-1 gap-3">
-                                        {fundamentalist.cards_indicadores.map((card, i) => (
-                                            <div key={i} className="bg-slate-800/40 border border-slate-700 p-4 rounded-xl flex justify-between items-center hover:bg-slate-800/60 transition-colors group">
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{card.titulo}</p>
-                                                    <p className="text-sm text-slate-200 font-bold font-mono">
-                                                        <PrivateValue
-                                                            value={card.valor_formatado || formatMoney(card.valor || 0)}
-                                                            isHidden={isHidden}
-                                                        />
-                                                    </p>
+                                <div className="space-y-6">
+                                    {/* LISTA DE CARDS */}
+                                    <div className="space-y-3">
+                                        {filteredCards && filteredCards.length > 0 ? (
+                                            filteredCards.map((card, i) => {
+                                                const style = getIndicatorStyles(card.tipo);
+                                                return (
+                                                    <div key={i} className={`${style.bg} border ${style.border} p-4 rounded-xl flex justify-between items-center group hover:border-opacity-50 transition-all`}>
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2">
+                                                                {style.icon}
+                                                                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{card.titulo}</p>
+                                                            </div>
+                                                            <p className="text-sm text-slate-100 font-bold font-mono">
+                                                                <PrivateValue
+                                                                    value={card.valor_formatado || formatMoney(card.valor || 0)}
+                                                                    isHidden={isHidden}
+                                                                />
+                                                            </p>
+                                                            {card.subtitulo && <p className="text-[9px] text-slate-500 font-medium italic">{card.subtitulo}</p>}
+                                                        </div>
+
+                                                        <div className="text-right flex flex-col gap-1">
+                                                            {card.yoy !== undefined && (
+                                                                <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${card.yoy >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                    {card.yoy > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                                                    {card.yoy > 0 ? '+' : ''}{card.yoy}% <span className="text-[8px] opacity-60 font-normal">YoY</span>
+                                                                </div>
+                                                            )}
+                                                            {card.qoq !== undefined && (
+                                                                <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${card.qoq >= 0 ? 'text-blue-400' : 'text-orange-400'}`}>
+                                                                    {card.qoq > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                                                                    {card.qoq > 0 ? '+' : ''}{card.qoq}% <span className="text-[8px] opacity-60 font-normal">QoQ</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <div className="py-12 text-center text-slate-600 text-[10px] uppercase font-bold tracking-widest border border-dashed border-slate-800 rounded-xl">
+                                                Nenhum indicador nesta categoria
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* GRÁFICO: QUALIDADE DO LUCRO (Apenas na aba Dívida & Caixa) */}
+                                    {subTab === 'divida' && fundamentalist.evolucao_grafico.length > 0 && (
+                                        <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl space-y-6 relative animate-in fade-in duration-500">
+
+                                            {/* Cabeçalho do Gráfico */}
+                                            <div className="flex justify-between items-center">
+                                                <div className="space-y-0.5">
+                                                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Qualidade do Lucro</p>
+                                                    <p className="text-[8px] text-slate-500 italic">Comparativo Lucro Líquido vs FCO</p>
                                                 </div>
-
-                                                {/* ÁREA DE CRESCIMENTO (YoY e QoQ) */}
-                                                <div className="text-right flex flex-col gap-1.5">
-                                                    {/* YoY - Year over Year */}
-                                                    {card.yoy !== undefined && (
-                                                        <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${card.yoy >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                            {card.yoy > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                                                            {card.yoy > 0 ? '+' : ''}{card.yoy}%
-                                                            <span className="text-[8px] opacity-60 ml-0.5 font-normal text-slate-400">YoY</span>
-                                                        </div>
-                                                    )}
-
-                                                    {/* QoQ - Quarter over Quarter */}
-                                                    {card.qoq !== undefined && (
-                                                        <div className={`flex items-center justify-end gap-1 text-[10px] font-bold ${card.qoq >= 0 ? 'text-blue-400' : 'text-orange-400'}`}>
-                                                            {card.qoq > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                                                            {card.qoq > 0 ? '+' : ''}{card.qoq}%
-                                                            <span className="text-[8px] opacity-60 ml-0.5 font-normal text-slate-400">QoQ</span>
-                                                        </div>
-                                                    )}
+                                                <div className="flex gap-3 bg-slate-800/50 p-1.5 rounded-md border border-slate-700/50">
+                                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div><span className="text-[8px] text-slate-300 font-bold uppercase">Lucro</span></div>
+                                                    <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-cyan-400 rounded-sm"></div><span className="text-[8px] text-slate-300 font-bold uppercase">FCO</span></div>
                                                 </div>
                                             </div>
-                                        ))}
-                                    </div>
 
-                                    <div className="bg-blue-500/5 border border-blue-500/10 p-3 rounded-lg text-center">
-                                        <p className="text-[9px] text-blue-400/70 font-bold uppercase tracking-widest">
-                                            Dados Oficiais CVM • Ref: {fundamentalist.ticker_info.ultimo_periodo}
+                                            {/* Container das Barras */}
+                                            <div className="h-40 flex items-end justify-around gap-2 px-2 pb-8 pt-4 border-b border-slate-800/50 relative">
+                                                {fundamentalist.evolucao_grafico.slice(-6).map((item, idx) => {
+                                                    // Lógica de Escala Dinâmica
+                                                    const allValues = fundamentalist!.evolucao_grafico.map(e => [Math.abs(e.lucro), Math.abs(e.fco || 0)]).flat();
+                                                    const maxVal = Math.max(...allValues, 1);
+
+                                                    // Altura mínima de 4% para visibilidade
+                                                    const lucroHeight = Math.max((Math.abs(item.lucro) / maxVal) * 100, 4);
+                                                    const fcoHeight = Math.max((Math.abs(item.fco || 0) / maxVal) * 100, 4);
+
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            className="flex-1 flex flex-col items-center relative group h-full justify-end"
+                                                            onMouseEnter={() => setHoveredBar(idx)}
+                                                            onMouseLeave={() => setHoveredBar(null)}
+                                                        >
+                                                            {/* TOOLTIP FLUTUANTE */}
+                                                            {hoveredBar === idx && (
+                                                                <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-slate-900 border border-blue-500/30 p-2.5 rounded-lg shadow-2xl z-30 min-w-[130px] pointer-events-none animate-in zoom-in-95 duration-200">
+                                                                    <p className="text-[7px] text-slate-500 font-bold uppercase mb-1 border-b border-slate-800 pb-1">{item.label}</p>
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex justify-between items-center gap-4">
+                                                                            <span className="text-[8px] text-blue-400 font-bold">LUCRO:</span>
+                                                                            <span className="text-[8px] text-slate-200 font-mono text-right">{formatMoney(item.lucro)}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center gap-4">
+                                                                            <span className="text-[8px] text-cyan-400 font-bold">FCO:</span>
+                                                                            <span className="text-[8px] text-slate-200 font-mono text-right">{formatMoney(item.fco || 0)}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* BARRAS DO GRÁFICO */}
+                                                            <div className="w-full flex items-end justify-center gap-1.5 h-full mb-1">
+                                                                <div
+                                                                    style={{ height: `${lucroHeight}%` }}
+                                                                    className={`w-3 rounded-t-[2px] transition-all duration-300 ${item.lucro < 0 ? 'bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.4)]' : 'bg-blue-500/40 group-hover:bg-blue-500'}`}
+                                                                />
+                                                                <div
+                                                                    style={{ height: `${fcoHeight}%` }}
+                                                                    className={`w-3 rounded-t-[2px] transition-all duration-300 ${(item.fco || 0) < 0 ? 'bg-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.4)]' : 'bg-cyan-400/40 group-hover:bg-cyan-400'}`}
+                                                                />
+                                                            </div>
+
+                                                            {/* LABELS CENTRALIZADOS */}
+                                                            <div className="absolute -bottom-6 flex flex-col items-center">
+                                                                <span className="text-[8px] text-slate-500 font-black tracking-tighter">{item.label}</span>
+                                                                <div className={`w-1 h-1 rounded-full mt-1 ${idx % 2 === 0 ? 'bg-blue-500/20' : 'bg-transparent'}`}></div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="flex justify-center items-center pt-2 opacity-50">
+                                                <p className="text-[7px] text-slate-500 italic">Passe o mouse nas barras para detalhes</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="bg-slate-900/80 border border-slate-800 p-3 rounded-lg">
+                                        <p className="text-[9px] text-slate-500 font-bold text-center uppercase tracking-widest">
+                                            Fonte: Dados Oficiais CVM • Ref: {fundamentalist.ticker_info.ultimo_periodo}
                                         </p>
                                     </div>
-                                </>
+                                </div>
                             ) : (
                                 <div className="py-12 text-center space-y-3">
                                     <Activity size={32} className="text-slate-800 mx-auto animate-pulse" />
-                                    <p className="text-xs text-slate-500 italic text-center px-4">
-                                        Nenhum dado fundamentalista processado. Clique no botão de sincronização no dashboard.
-                                    </p>
+                                    <p className="text-xs text-slate-500 italic px-4 text-center">Sincronizando dados fundamentalistas...</p>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* ABA: DOCUMENTOS (RELATÓRIOS FII/PDFS) */}
                     {activeTab === 'docs' && (
                         <div className="space-y-3 animate-in slide-in-from-left-2 duration-300">
-                            {reports.length > 0 ? (
-                                reports.map((doc: any, i: number) => (
-                                    <div key={i} className="bg-slate-800/40 border border-slate-700 p-4 rounded-xl space-y-3 hover:bg-slate-800/60 transition-colors group">
-                                        <div className="flex flex-col gap-2">
-                                            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
-                                                {(doc.type || "").toLowerCase().includes('gerencial') ? '⭐ Relatório Principal' : 'Documento Oficial'}
-                                            </span>
-                                            <div className="flex items-start gap-3">
-                                                <Calendar size={14} className="text-blue-400 mt-0.5" />
-                                                <div>
-                                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Emissão</p>
-                                                    <p className="text-xs text-slate-200 font-medium">{doc.date || 'Não informada'}</p>
-                                                </div>
+                            {reports.length > 0 ? reports.map((doc: any, i: number) => (
+                                <div key={i} className="bg-slate-800/40 border border-slate-700 p-4 rounded-xl space-y-3">
+                                    <div className="flex flex-col gap-2">
+                                        <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
+                                            {(doc.type || "").toLowerCase().includes('gerencial') ? '⭐ Relatório Principal' : 'Documento Oficial'}
+                                        </span>
+                                        <div className="flex items-start gap-3">
+                                            <Calendar size={14} className="text-blue-400 mt-0.5" />
+                                            <div>
+                                                <p className="text-[10px] text-slate-500 uppercase font-bold">Referência</p>
+                                                <p className="text-xs text-slate-200 font-medium">{doc.date || 'Recente'}</p>
                                             </div>
                                         </div>
-
-                                        {typeof doc.link === 'string' && doc.link.length > 0 ? (
-                                            <a
-                                                href={doc.link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg font-bold text-[10px] uppercase transition-all"
-                                            >
-                                                Visualizar PDF <ExternalLink size={12} />
-                                            </a>
-                                        ) : (
-                                            <div className="w-full py-2 bg-slate-900/50 border border-slate-800 rounded-lg text-center text-[10px] text-slate-600 font-bold uppercase">
-                                                Link Indisponível
-                                            </div>
-                                        )}
                                     </div>
-                                ))
-                            ) : (
-                                <div className="py-8 text-center text-slate-500 text-xs italic">Nenhum documento disponível para este ativo.</div>
+                                    {typeof doc.link === 'string' && (
+                                        <a href={doc.link} target="_blank" rel="noopener noreferrer" className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg font-bold text-[10px] uppercase transition-all">
+                                            Abrir no Navegador <ExternalLink size={12} />
+                                        </a>
+                                    )}
+                                </div>
+                            )) : (
+                                <div className="py-8 text-center text-slate-500 text-xs italic">Nenhum documento disponível.</div>
                             )}
                         </div>
                     )}
