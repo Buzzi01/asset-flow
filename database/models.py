@@ -26,6 +26,7 @@ class Asset(Base):
     ticker = Column(String, unique=True, nullable=False)
     name = Column(String)
     cnpj = Column(String, nullable=True)
+    cvm_code = Column(String, nullable=True)
     currency = Column(String, default="BRL")
     category_id = Column(Integer, ForeignKey('categories.id'), nullable=False) # Categoria é obrigatória
     

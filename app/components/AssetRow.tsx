@@ -1,111 +1,13 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import {
   Snowflake, TrendingUp, TrendingDown, Pencil,
-  FileText, Info, Layers, X, ExternalLink, Calendar
+  FileText, Info, Layers
 } from 'lucide-react';
 import { formatMoney, getStatusBg, getStatusColor } from '../utils';
 import { Asset } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
-
-// --- MODAL DE RELATÓRIO COM PORTAL PARA EVITAR ERROS DE TABELA ---
-const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () => void, ativo: any }) => {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
-
-  if (!isOpen || !ativo || !mounted) return null;
-
-  // Lógica para extrair os relatórios (Suporta JSON do pacote ou link único antigo)
-  let reports: any[] = [];
-  const rawData = ativo.last_report_type;
-
-  try {
-    // 1. Caso seja o novo formato JSON vindo do Python
-    if (typeof rawData === 'string' && rawData.trim().startsWith('{')) {
-      const packageData = JSON.parse(rawData);
-      reports = Object.values(packageData);
-    }
-    // 2. Caso seja o formato de link único (retrocompatibilidade)
-    else if (ativo.last_report_url) {
-      reports = [{
-        link: ativo.last_report_url,
-        date: ativo.last_report_at || "Recente",
-        type: (typeof rawData === 'string' && rawData.length > 2) ? rawData : "Relatório Geral"
-      }];
-    }
-  } catch (e) {
-    console.error("Erro ao processar JSON de relatórios:", e);
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-[#0f172a] w-full max-w-md rounded-2xl border border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-900/50">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600/20 p-2 rounded-lg border border-blue-500/30">
-              <Layers size={18} className="text-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-white font-bold text-sm tracking-tight">{ativo.ticker}</h3>
-              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Central de Documentos</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-4 max-h-[70vh] overflow-y-auto space-y-3 custom-scrollbar">
-          {reports.length > 0 ? (
-            reports.map((doc: any, i: number) => (
-              <div key={i} className="bg-slate-800/40 border border-slate-700 p-4 rounded-xl space-y-3 hover:bg-slate-800/60 transition-colors group">
-                <div className="flex flex-col gap-2">
-                  <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
-                    {(doc.type || "").toLowerCase().includes('gerencial') ? '⭐ Relatório Principal' : 'Documento Oficial'}
-                  </span>
-                  <div className="flex items-start gap-3">
-                    <Calendar size={14} className="text-blue-400 mt-0.5" />
-                    <div>
-                      <p className="text-[10px] text-slate-500 uppercase font-bold">Data de Emissão</p>
-                      <p className="text-xs text-slate-200 font-medium">{doc.date || 'Não informada'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Info size={14} className="text-blue-400 mt-0.5" />
-                    <div>
-                      <p className="text-[10px] text-slate-500 uppercase font-bold">Tipo de Documento</p>
-                      <p className="text-xs text-slate-200 font-medium">{doc.type || 'Documento'}</p>
-                    </div>
-                  </div>
-                </div>
-                <a
-                  href={doc.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-blue-600 text-white py-2 rounded-lg font-bold text-[10px] uppercase transition-all"
-                >
-                  Visualizar PDF <ExternalLink size={12} />
-                </a>
-              </div>
-            ))
-          ) : (
-            <div className="py-8 text-center space-y-3">
-              <Layers size={32} className="text-slate-700 mx-auto" />
-              <p className="text-sm text-slate-400 font-medium">Nenhum relatório disponível.</p>
-              <p className="text-[10px] text-slate-600 uppercase font-bold italic">Sincronize os dados no topo</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-};
+import ReportModal from './ReportModal'; // 👈 Importando o modal novo do arquivo separado
 
 interface AssetRowProps {
   ativo: Asset;
@@ -121,7 +23,7 @@ const PrivateValue = ({ value, isHidden, className = "" }: { value: string | num
 );
 
 export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: AssetRowProps) => {
-  const { isPrivacyHidden: isHidden } = usePrivacy() as any;
+  const { isHidden } = usePrivacy() as any;
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const pvp = ativo.p_vp || 0;
@@ -161,8 +63,10 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
   const displayPrice = isUSD ? `$ ${ativo.preco_atual.toFixed(2)}` : formatMoney(ativo.preco_atual);
   const displayPM = isUSD ? `$ ${ativo.pm.toFixed(2)}` : formatMoney(ativo.pm);
 
-  // LOGICA DE ICONE: Verifica se existe algum dado de relatório
-  const hasReports = !!ativo.last_report_url || (typeof ativo.last_report_type === 'string' && ativo.last_report_type.length > 5);
+  // Considera que tem relatório se houver dados fundamentalistas ou URL de relatório
+  const hasReports = !!ativo.last_report_url ||
+    (typeof ativo.last_report_type === 'string' && ativo.last_report_type.length > 5) ||
+    !!(ativo as any).fundamentalist_data;
 
   return (
     <>
@@ -185,7 +89,7 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                   <button
                     onClick={() => setIsReportModalOpen(true)}
                     className={`p-1 hover:bg-slate-700 rounded transition-colors ${hasReports ? 'text-blue-400' : 'text-slate-600'}`}
-                    title="Documentos CVM"
+                    title="Análise e Documentos"
                   >
                     <Layers size={12} />
                   </button>
@@ -310,6 +214,10 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
         )}
       </tr>
 
+      {/* AQUI É O SEGREDO: 
+          Agora usamos o ReportModal que foi importado no topo, 
+          que contém a lógica de abas (Fundamentos + Docs).
+      */}
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}

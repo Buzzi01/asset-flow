@@ -11,6 +11,35 @@ interface EditModalProps {
   allAssets?: Asset[];
 }
 
+// 1️⃣ MOVIDO PARA FORA: Isso impede que o input perca o foco ao digitar
+const InputControl = ({ label, value, field, step, precision, color = "blue", onAdjust, onChange }: any) => (
+  <div className="space-y-1.5">
+    <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">{label}</label>
+    <div className={`flex items-center bg-slate-950 border border-slate-800 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-${color}-500/50 transition-all shadow-inner`}>
+      <button
+        type="button"
+        onClick={() => onAdjust(field, -step, precision)}
+        className={`p-2.5 text-${color}-500 hover:bg-${color}-500/10 transition-colors`}
+      >
+        <Minus size={14} />
+      </button>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(field, Number(e.target.value))}
+        className="w-full bg-transparent p-2 text-white outline-none font-mono text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <button
+        type="button"
+        onClick={() => onAdjust(field, step, precision)}
+        className={`p-2.5 text-${color}-500 hover:bg-${color}-500/10 transition-colors`}
+      >
+        <Plus size={14} />
+      </button>
+    </div>
+  </div>
+);
+
 export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: EditModalProps) => {
   const [formData, setFormData] = useState({
     quantity: 0,
@@ -24,41 +53,20 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
 
   const [loading, setLoading] = useState(false);
 
-  // 1️⃣ Validação de Domínio: Identifica se o formato pertence à Bolsa
+  // Lógica de mercado
   const isMarketTicker = (ticker: string) => {
     if (!ticker) return false;
     const t = ticker.trim().toUpperCase();
-    return (
-      /^[A-Z]{4}[0-9]{1,2}$/.test(t) ||    // Ações/BDRs: PETR4, VALE3, GOGL34
-      /^[A-Z0-9]{4,6}11$/.test(t) ||       // FIIs/ETFs: HGLG11, B5P211, IVVB11
-      /^[A-Z]{1,4}$/.test(t)               // ETFs USA: IVV, VT, QQQ
-    );
+    return /^[A-Z]{4}[0-9]{1,2}$/.test(t) || /^[A-Z0-9]{4,6}11$/.test(t) || /^[A-Z]{1,4}$/.test(t);
   };
 
-  // 2️⃣ Lógica de Decisão: Define a interface do Modal
   const shouldShowManualPrice = () => {
     if (!ativo) return false;
-
     const ticker = ativo.ticker?.trim().toUpperCase() || "";
     const preco = Number(ativo.preco_atual);
-    const categoria = ativo.tipo || "";
-
-    // REGRA 1: Não segue padrão de mercado? Manual obrigatório (TESTE, TESTE1)
-    if (!isMarketTicker(ticker)) {
-      return true;
-    }
-
-    // REGRA 2: É mercado, mas o preço está zerado/inválido? Manual (B5P211 se Yahoo falhar)
-    // No seu services.py, mdata.price vira 0 se não houver captura
-    if (isNaN(preco) || preco <= 0) {
-      return true;
-    }
-
-    // REGRA 4: Caso contrário, confiamos na automação
-    return false;
+    return !isMarketTicker(ticker) || isNaN(preco) || preco <= 0;
   };
 
-  // 3️⃣ useEffect Sincronizado: Garante que o form reflita a decisão acima
   useEffect(() => {
     if (ativo && isOpen) {
       setFormData({
@@ -73,35 +81,25 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
     }
   }, [ativo, isOpen]);
 
-  const adjustValue = (field: keyof typeof formData, delta: number, precision = 2) => {
+  // Funções de manipulação de estado passadas para o InputControl
+  const handleAdjustValue = (field: keyof typeof formData, delta: number, precision = 2) => {
     setFormData(prev => {
       const newVal = Number((prev[field] + delta).toFixed(precision));
       return { ...prev, [field]: Math.max(0, newVal) };
     });
   };
 
+  const handleInputChange = (field: keyof typeof formData, value: number) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const maxLimit = (() => {
     if (!ativo) return 100;
-    const outrosDoMesmoTipo = allAssets.filter(
-      (a) => a.tipo === ativo.tipo && a.ticker !== ativo.ticker
-    );
-    const totalOcupado = outrosDoMesmoTipo.reduce((acc, a) => acc + (a.meta || 0), 0);
+    const totalOcupado = allAssets
+      .filter((a) => a.tipo === ativo.tipo && a.ticker !== ativo.ticker)
+      .reduce((acc, a) => acc + (a.meta || 0), 0);
     return Math.max(0, 100 - totalOcupado);
   })();
-
-  useEffect(() => {
-    if (ativo && isOpen) { // Adicionado isOpen para resetar o form ao abrir
-      setFormData({
-        quantity: ativo.qtd || 0,
-        average_price: ativo.pm || 0,
-        target_percent: ativo.meta || 0,
-        manual_dy: Number(((ativo.manual_dy || 0) * 100).toFixed(2)),
-        manual_lpa: ativo.manual_lpa || 0,
-        manual_vpa: ativo.manual_vpa || 0,
-        manual_price: ativo.preco_atual || 0
-      });
-    }
-  }, [ativo, isOpen]);
 
   const handleSave = async () => {
     if (!ativo) return;
@@ -109,14 +107,13 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
     try {
       const payload = {
         ticker: ativo.ticker,
-        qtd: Number(formData.quantity) || 0,
-        pm: Number(formData.average_price) || 0,
-        meta: Number(formData.target_percent) || 0,
-        dy: Number(formData.manual_dy) / 100 || 0,
-        lpa: Number(formData.manual_lpa) || 0,
-        vpa: Number(formData.manual_vpa) || 0,
-        // IMPORTANTE: Verifique se o backend espera 'current_price' ou 'manual_price'
-        current_price: Number(formData.manual_price) || 0
+        qtd: Number(formData.quantity),
+        pm: Number(formData.average_price),
+        meta: Number(formData.target_percent),
+        dy: Number(formData.manual_dy) / 100,
+        lpa: Number(formData.manual_lpa),
+        vpa: Number(formData.manual_vpa),
+        current_price: Number(formData.manual_price)
       };
 
       const res = await fetch('http://localhost:5328/api/update_asset', {
@@ -128,21 +125,16 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
       if (res.ok) {
         onSave();
         onClose();
-      } else {
-        const errorData = await res.json();
-        alert(`Erro ao salvar: ${errorData.msg || 'Erro desconhecido'}`);
       }
     } catch (error) {
       console.error(error);
-      alert("Erro de conexão com o servidor.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!ativo) return;
-    if (!window.confirm(`Deseja realmente excluir ${ativo.ticker}?`)) return;
+    if (!ativo || !window.confirm(`Excluir ${ativo.ticker}?`)) return;
     setLoading(true);
     try {
       const res = await fetch('http://localhost:5328/api/delete_asset', {
@@ -151,29 +143,8 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
         body: JSON.stringify({ id: ativo.id }),
       });
       if (res.ok) { onSave(); onClose(); }
-    } catch (error) { console.error(error); }
-    finally { setLoading(false); }
+    } finally { setLoading(false); }
   };
-
-  const InputControl = ({ label, value, field, step, precision, color = "blue" }: any) => (
-    <div className="space-y-1.5">
-      <label className="text-[10px] uppercase font-bold text-slate-500 tracking-widest ml-1">{label}</label>
-      <div className={`flex items-center bg-slate-950 border border-slate-800 rounded-lg overflow-hidden focus-within:border-${color}-500/50 transition-all shadow-inner`}>
-        <button type="button" onClick={() => adjustValue(field, -step, precision)} className={`p-2.5 text-${color}-500 hover:bg-${color}-500/10 transition-colors`}>
-          <Minus size={14} />
-        </button>
-        <input
-          type="number"
-          value={value}
-          onChange={(e) => setFormData({ ...formData, [field]: Number(e.target.value) })}
-          className="w-full bg-transparent p-2 text-white outline-none font-mono text-center text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-        />
-        <button type="button" onClick={() => adjustValue(field, step, precision)} className={`p-2.5 text-${color}-500 hover:bg-${color}-500/10 transition-colors`}>
-          <Plus size={14} />
-        </button>
-      </div>
-    </div>
-  );
 
   if (!isOpen || !ativo) return null;
 
@@ -202,17 +173,13 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
                 <DollarSign size={16} />
                 <span className="text-[10px] font-bold uppercase tracking-widest leading-none">Preço Manual</span>
               </div>
-              <InputControl label="Preço Atual / Saldo" value={formData.manual_price} field="manual_price" step={10} precision={2} color="emerald" />
-              <div className="flex items-center gap-1.5 text-[9px] text-slate-500 italic ml-1">
-                <Info size={10} />
-                <span>Yahoo Finance desativado ou não encontrado.</span>
-              </div>
+              <InputControl label="Preço Atual / Saldo" value={formData.manual_price} field="manual_price" step={10} precision={2} color="emerald" onAdjust={handleAdjustValue} onChange={handleInputChange} />
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <InputControl label="Quantidade" value={formData.quantity} field="quantity" step={1} precision={4} color="blue" />
-            <InputControl label="Preço Médio" value={formData.average_price} field="average_price" step={0.5} precision={2} color="blue" />
+            <InputControl label="Quantidade" value={formData.quantity} field="quantity" step={1} precision={4} color="blue" onAdjust={handleAdjustValue} onChange={handleInputChange} />
+            <InputControl label="Preço Médio" value={formData.average_price} field="average_price" step={0.5} precision={2} color="blue" onAdjust={handleAdjustValue} onChange={handleInputChange} />
           </div>
 
           <div className="space-y-3">
@@ -226,7 +193,7 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
             <input
               type="range" min="0" max={maxLimit} step="0.5"
               value={formData.target_percent > maxLimit ? maxLimit : formData.target_percent}
-              onChange={(e) => setFormData({ ...formData, target_percent: Number(e.target.value) })}
+              onChange={(e) => handleInputChange('target_percent', Number(e.target.value))}
               className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
             />
           </div>
@@ -238,15 +205,15 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inteligência</span>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <InputControl label="DY Anual %" value={formData.manual_dy} field="manual_dy" step={0.1} precision={2} color="purple" />
+                <InputControl label="DY Anual %" value={formData.manual_dy} field="manual_dy" step={0.1} precision={2} color="purple" onAdjust={handleAdjustValue} onChange={handleInputChange} />
                 {ativo.tipo === 'FII' && (
-                  <InputControl label="VP / Cota" value={formData.manual_vpa} field="manual_vpa" step={0.5} precision={2} color="purple" />
+                  <InputControl label="VP / Cota" value={formData.manual_vpa} field="manual_vpa" step={0.5} precision={2} color="purple" onAdjust={handleAdjustValue} onChange={handleInputChange} />
                 )}
                 {ativo.tipo === 'Ação' && (
                   <>
-                    <InputControl label="LPA (Lucro)" value={formData.manual_lpa} field="manual_lpa" step={0.5} precision={2} color="purple" />
+                    <InputControl label="LPA (Lucro)" value={formData.manual_lpa} field="manual_lpa" step={0.5} precision={2} color="purple" onAdjust={handleAdjustValue} onChange={handleInputChange} />
                     <div className="col-span-2">
-                      <InputControl label="VPA (Patrimonial)" value={formData.manual_vpa} field="manual_vpa" step={0.5} precision={2} color="purple" />
+                      <InputControl label="VPA (Patrimonial)" value={formData.manual_vpa} field="manual_vpa" step={0.5} precision={2} color="purple" onAdjust={handleAdjustValue} onChange={handleInputChange} />
                     </div>
                   </>
                 )}

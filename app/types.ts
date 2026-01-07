@@ -58,3 +58,24 @@ export interface DashboardData {
   alertas: string[];
   ativos: Asset[];
 }
+
+export interface FundamentalistData {
+  ticker_info: {
+    ultimo_periodo: string;
+    data_base: string;
+  };
+  cards_indicadores: Array<{
+    titulo: string;
+    valor?: number;
+    valor_formatado?: string;
+    yoy?: number;
+    qoq?: number;
+    status?: 'positivo' | 'negativo';
+    tipo?: string;
+  }>;
+  evolucao_grafico: Array<{
+    label: string;
+    receita: number;
+    lucro: number;
+  }>;
+}
