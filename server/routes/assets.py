@@ -142,3 +142,10 @@ def get_assets():
         return jsonify(results)
     except Exception as e:
         return jsonify({"status": "Erro", "msg": str(e)}), 500
+    
+# Adicione isso junto com suas outras rotas
+@assets_bp.route('/api/correlation', methods=['GET'])
+def correlation():
+    # Usa o service global já instanciado no topo
+    data = service.get_correlation_matrix()
+    return jsonify(data)

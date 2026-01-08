@@ -287,7 +287,7 @@ const ReportModal = ({ isOpen, onClose, ativo }: { isOpen: boolean, onClose: () 
                             ) : (
                                 <div className="py-12 text-center space-y-3">
                                     <Activity size={32} className="text-slate-800 mx-auto animate-pulse" />
-                                    <p className="text-xs text-slate-500 italic px-4 text-center">Sincronizando dados fundamentalistas...</p>
+                                        <p className="text-xs text-slate-500 italic px-4 text-center">Nenhum dado disponível.</p>
                                 </div>
                             )}
                         </div>

@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import {
   TrendingUp, Wallet, DollarSign, Activity,
-  Target, Layers, RefreshCw, AlertTriangle, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle,
-  Brain, Calendar, Eye, EyeOff, Percent
+  Target, Layers, RefreshCw, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle,
+  Brain, Calendar, Eye, EyeOff, Percent, Grip, Building2, Globe, Landmark, Bitcoin
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePrivacy } from './context/PrivacyContext';
@@ -18,6 +18,7 @@ import { AddAssetModal } from './components/AddAssetModal';
 import AssetNewsPanel from './components/AssetNewsPanel';
 import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart';
+import CorrelationMatrix from './components/CorrelationMatrix';
 import { AlertsButton } from './components/AlertsButton';
 
 export default function Home() {
@@ -29,24 +30,25 @@ export default function Home() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newsTicker, setNewsTicker] = useState<string | null>(null);
   const [updatingFundamentals, setUpdatingFundamentals] = useState(false);
-  const [syncingReports, setSyncingReports] = useState(false); // Estágio de sincronização CVM
+  const [syncingReports, setSyncingReports] = useState(false);
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
     { id: 'Evolução', icon: <LineChart size={16} /> },
+    { id: 'Correlação', icon: <Grip size={16} />, label: "Matriz" },
     { id: 'Ação', icon: <TrendingUp size={16} /> },
-    { id: 'FII', icon: <Activity size={16} /> },
-    { id: 'Internacional', icon: <DollarSign size={16} /> },
-    { id: 'Renda Fixa', label: 'Renda Fixa' },
-    { id: 'Reserva', label: 'Reserva' },
-    { id: 'Cripto', label: 'Cripto' },
-    { id: 'Radar', icon: <Target size={16} />, label: "Radar" },
-  ];
+    { id: 'FII', icon: <Building2 size={16} /> }, // Prédio para Imobiliário
+    { id: 'Internacional', icon: <Globe size={16} /> }, // Globo para Exterior
+    { id: 'Renda Fixa', icon: <Landmark size={16} />, label: 'Renda Fixa' }, // Banco/Instituição
+    { id: 'Reserva', icon: <Wallet size={16} />, label: 'Reserva' }, // Carteira/Caixa
+    { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Cripto' }, // Símbolo do Bitcoin
+];
 
+  // REMOVIDO 'Radar' da lista de tabs especiais
   const filteredAssets = data?.ativos?.filter((a) =>
-    tab === 'Radar' || tab === 'Evolução' ? true : a.tipo === tab
+    ['Evolução', 'Correlação'].includes(tab) ? true : a.tipo === tab
   ).sort((a, b) => a.ticker.localeCompare(b.ticker)) || [];
 
   const topCompras = data?.ativos?.filter((a) => a.falta_comprar > 0).sort((a, b) => b.score - a.score).slice(0, 3) || [];
@@ -58,11 +60,10 @@ export default function Home() {
 
   const money = (val: number) => isHidden ? '••••••' : formatMoney(val);
 
-  // Função para sincronizar relatórios via CVM (Dados Abertos)
   const handleSyncReports = async () => {
     setSyncingReports(true);
     try {
-      const response = await fetch('http://localhost:5328/api/sync-reports', { method: 'POST' });
+      const response = await fetch('http://localhost:5000/api/sync-reports', { method: 'POST' });
       const result = await response.json();
       if (result.status === "Sucesso") {
         alert(result.msg);
@@ -81,7 +82,7 @@ export default function Home() {
   const handleUpdateFundamentals = async () => {
     setUpdatingFundamentals(true);
     try {
-      await fetch('http://localhost:5328/api/update-fundamentals', { method: 'POST' });
+      await fetch('http://localhost:5000/api/update-fundamentals', { method: 'POST' });
       alert("Sucesso! Inteligência atualizada.");
       refetch(true);
     } catch (e) { console.error(e); }
@@ -144,7 +145,6 @@ export default function Home() {
 
               <AlertsButton onFixAsset={handleFixAsset} />
 
-              {/* BOTÃO DE SINCRONIZAÇÃO CVM */}
               <button
                 onClick={handleSyncReports}
                 disabled={syncingReports}
@@ -198,7 +198,7 @@ export default function Home() {
 
         <div className="max-w-7xl mx-auto px-4 flex gap-4 overflow-x-auto no-scrollbar border-t border-slate-800/30">
           {categories.map((c) => (
-            <button key={c.id} onClick={() => setTab(c.id)} className={`flex items-center gap-2 px-1 py-3 text-xs font-medium transition-all relative border-b-2 ${tab === c.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+            <button key={c.id} onClick={() => setTab(c.id)} className={`flex items-center gap-2 px-1 py-3 text-xs font-medium transition-all relative border-b-2 whitespace-nowrap ${tab === c.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
               {c.icon}{c.label || c.id}
             </button>
           ))}
@@ -209,14 +209,13 @@ export default function Home() {
 
         {tab === 'Resumo' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
-
             {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard title="Yield on Cost Médio" value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} subtext="Anual Est." icon={Percent} colorClass="text-purple-400" />
               <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400" />
               <StatCard title="Lucro / Prejuízo" value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Variação Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"} />
 
-              {/* TOP PICK CARD COM LETREIRO */}
+              {/* TOP PICK CARD */}
               <div className="bg-[#0f172a] p-4 rounded-xl border border-slate-800 flex flex-col justify-between min-h-[115px] relative overflow-hidden group hover:border-slate-700 transition-all shadow-lg shadow-black/40">
                 <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
                   <Target size={32} className="text-blue-400" />
@@ -249,7 +248,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* GRID PRINCIPAL COM TRAVA DE SIMETRIA */}
+            {/* GRID PRINCIPAL */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               <div className="h-[525px]">
                 <RiskRadar alertas={data?.alertas || []} />
@@ -271,9 +270,17 @@ export default function Home() {
             <HistoryChart data={history} />
           </div>
         )}
-        {tab === 'Radar' && <div className="h-[600px]"><RiskRadar alertas={data?.alertas || []} /></div>}
 
-        {tab !== 'Resumo' && tab !== 'Radar' && tab !== 'Evolução' && (
+        {tab === 'Correlação' && (
+          <div className="animate-in fade-in w-full">
+            <CorrelationMatrix />
+          </div>
+        )}
+
+        {/* REMOVIDO O BLOCO DO RADAR AVULSO AQUI */}
+
+        {/* TABELA DE ATIVOS (Filtrada) - Atualizado filtro */}
+        {!['Resumo', 'Evolução', 'Correlação'].includes(tab) && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
               <table className="w-full text-left text-sm">
@@ -302,7 +309,7 @@ export default function Home() {
         <AddAssetModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={() => refetch(true)} />
         <AssetNewsPanel ticker={newsTicker} onClose={() => setNewsTicker(null)} />
 
-        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.4 (Pro Insights)</div>
+        <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.5 (Matrix Edition)</div>
       </div>
     </main>
   );

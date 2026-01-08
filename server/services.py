@@ -805,6 +805,114 @@ class PortfolioService:
             return {"status": "Erro", "msg": str(e)}
         finally:
             Session.remove()
+
+    def get_correlation_matrix(self):
+        print("🧮 JOB: Calculando Matriz de Correlação (Blindada)...")
+        session = Session()
+        try:
+            # 1. Pega ativos com quantidade > 0
+            positions = session.query(Position).filter(Position.quantity > 0).all()
+            if not positions: return {"status": "Erro", "msg": "Carteira vazia."}
+
+            # 2. Prepara lista de tickers
+            tickers_map = {}
+            download_list = []
+            
+            for pos in positions:
+                if not pos.asset: continue
+                ticker_clean = pos.asset.ticker.strip().upper()
+                is_intl = pos.asset.category.name == 'Internacional'
+                
+                # Regra de Sufixo
+                if not is_intl and not ticker_clean.endswith('.SA') and pos.asset.category.name != 'Cripto' and not ticker_clean.endswith('-USD'):
+                     ticker_yf = f"{ticker_clean}.SA"
+                else:
+                     ticker_yf = ticker_clean
+                
+                tickers_map[ticker_yf] = ticker_clean 
+                download_list.append(ticker_yf)
+
+            # Validação Mínima de Ativos
+            unique_assets = list(set(download_list))
+            if len(unique_assets) < 2:
+                return {"status": "Erro", "msg": "Precisa de pelo menos 2 ativos distintos para correlação."}
+
+            # 3. Download Batch Seguro
+            print(f"   ⬇️ Baixando histórico para {len(unique_assets)} ativos...")
+            
+            # auto_adjust=True: Já traz o preço ajustado por dividendos/splits (Fundamental!)
+            raw_data = yf.download(unique_assets, period="1y", progress=False, auto_adjust=True)
+            
+            # --- BLINDAGEM 1: MultiIndex vs SingleIndex ---
+            # O yfinance muda o retorno dependendo se baixou 1 ou N ativos, ou se falhou alguns.
+            if isinstance(raw_data.columns, pd.MultiIndex):
+                # Caso padrão: N ativos -> Temos nível 'Price' e nível 'Ticker'
+                # Tentamos pegar 'Close', se não tiver (auto_adjust mata o Close as vezes), pegamos 'Adj Close' ou a coluna única
+                try:
+                    prices = raw_data['Close']
+                except KeyError:
+                    # Fallback se auto_adjust=True retornar apenas colunas diretas
+                    prices = raw_data
+            else:
+                # Caso onde o MultiIndex colapsou (ex: só 1 ativo válido retornou)
+                if 'Close' in raw_data.columns:
+                    prices = raw_data[['Close']] # Mantém DataFrame
+                else:
+                    prices = raw_data # Assume que o que veio já é preço
+
+            # 4. Limpeza e Validação Estatística
+            # Remove colunas inteiramente vazias (ativos que falharam no download)
+            prices = prices.dropna(axis=1, how='all')
+            
+            if prices.shape[1] < 2:
+                 return {"status": "Erro", "msg": "Não foi possível obter dados para pelo menos 2 ativos."}
+
+            # Calcula retornos e alinha datas (Inner Join das datas)
+            returns = prices.pct_change()
+            returns_clean = returns.dropna()
+            
+            # --- BLINDAGEM 2: Suficiência de Dados ---
+            # Se a interseção de datas for muito pequena (ex: IPO recente), a correlação é ruído.
+            days_in_common = returns_clean.shape[0]
+            
+            if days_in_common < 30:
+                msg = f"Dados insuficientes: Apenas {days_in_common} dias em comum entre os ativos."
+                print(f"⚠️ {msg}")
+                return {"status": "Erro", "msg": msg}
+
+            # Cálculo de Pearson
+            corr_matrix = returns_clean.corr()
+
+            # 5. Formatação JSON
+            matrix_data = []
+            assets_labels = [tickers_map.get(t, t) for t in corr_matrix.columns]
+            
+            for i, row_ticker in enumerate(corr_matrix.index):
+                for j, col_ticker in enumerate(corr_matrix.columns):
+                    val = corr_matrix.iloc[i, j]
+                    
+                    # Trata NaN/Infinity
+                    if pd.isna(val) or np.isinf(val): val = 0
+                    
+                    matrix_data.append({
+                        "x": tickers_map.get(row_ticker, row_ticker),
+                        "y": tickers_map.get(col_ticker, col_ticker),
+                        "value": round(float(val), 2)
+                    })
+
+            return {
+                "status": "Sucesso",
+                "labels": assets_labels,
+                "matrix": matrix_data
+            }
+
+        except Exception as e:
+            print(f"❌ Erro crítico na correlação: {e}")
+            import traceback
+            traceback.print_exc() # Imprime a pilha de erro no terminal do servidor
+            return {"status": "Erro", "msg": "Erro interno no cálculo."}
+        finally:
+            Session.remove()
             
 
     def update_fundamentals(self):
