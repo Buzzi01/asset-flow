@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Snowflake, TrendingUp, TrendingDown, Pencil,
   FileText, Info, Layers
@@ -7,7 +7,7 @@ import {
 import { formatMoney, getStatusBg, getStatusColor } from '../utils';
 import { Asset } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
-import ReportModal from './ReportModal'; // 👈 Importando o modal novo do arquivo separado
+import ReportModal from './ReportModal';
 
 interface AssetRowProps {
   ativo: Asset;
@@ -25,6 +25,10 @@ const PrivateValue = ({ value, isHidden, className = "" }: { value: string | num
 export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: AssetRowProps) => {
   const { isHidden } = usePrivacy() as any;
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  // Estado para controlar o Tooltip Flutuante (Fixed)
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; position: 'top' | 'bottom' } | null>(null);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const pvp = ativo.p_vp || 0;
   const magicNumber = ativo.magic_number || 0;
@@ -56,32 +60,57 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
     return 'bg-blue-400';
   };
 
-  const isBottomRow = total > 3 && index >= total - 3;
-  const tooltipPositionClass = isBottomRow ? 'bottom-8' : 'top-7';
-
   const isUSD = (ativo as any).currency === 'USD';
   const displayPrice = isUSD ? `$ ${ativo.preco_atual.toFixed(2)}` : formatMoney(ativo.preco_atual);
   const displayPM = isUSD ? `$ ${ativo.pm.toFixed(2)}` : formatMoney(ativo.pm);
 
-  // Considera que tem relatório se houver dados fundamentalistas ou URL de relatório
   const hasReports = !!ativo.last_report_url ||
     (typeof ativo.last_report_type === 'string' && ativo.last_report_type.length > 5) ||
     !!(ativo as any).fundamentalist_data;
+
+  // Handlers para o Tooltip Inteligente
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    // Se tiver menos de 300px para baixo, joga o tooltip para cima
+    const position = spaceBelow < 300 ? 'top' : 'bottom';
+
+    setTooltip({
+      x: rect.right, // Alinha com a direita do badge
+      y: position === 'top' ? rect.top : rect.bottom,
+      position
+    });
+  };
+
+  const handleMouseLeave = () => {
+    // Pequeno delay para permitir mover o mouse do badge para o tooltip se precisar
+    hideTimeoutRef.current = setTimeout(() => {
+      setTooltip(null);
+    }, 100);
+  };
 
   return (
     <>
       <tr className="hover:bg-slate-800/40 transition-colors border-b border-slate-800/50 last:border-0 group text-xs sm:text-sm">
         <td className="p-4 pl-6">
           <div className="flex items-center gap-3">
-            {!imgError ? (
-              <div className="w-9 h-9 rounded-full bg-white/5 p-1 overflow-hidden shrink-0 border border-white/10 shadow-sm">
-                <img src={logoUrl} alt={ativo.ticker} className="w-full h-full object-contain opacity-90 group-hover:opacity-100 transition-opacity" onError={() => setImgError(true)} />
-              </div>
-            ) : (
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-lg ${getStatusBg(ativo.status)}`}>
-                {ativo.ticker.substring(0, 2)}
-              </div>
-            )}
+            <div className="relative h-9 w-9 shrink-0 rounded-full bg-slate-800 overflow-hidden shadow-sm group-hover:scale-110 transition-transform duration-300">
+              {!imgError ? (
+                <img
+                  src={logoUrl}
+                  alt={ativo.ticker}
+                  className="h-full w-full object-cover"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className={`h-full w-full flex items-center justify-center text-[9px] font-bold text-white ${getStatusBg(ativo.status)}`}>
+                  {ativo.ticker.substring(0, 2)}
+                </div>
+              )}
+            </div>
+
             <div>
               <div className="font-bold text-white text-sm flex items-center gap-2">
                 {ativo.ticker}
@@ -153,12 +182,29 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
             ) : (
               <span className="text-slate-700 text-[10px] font-medium">-</span>
             )}
-            <div className="group/tooltip relative inline-block">
-              <div className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border uppercase font-bold cursor-help transition-all hover:brightness-110 ${getStatusColor(ativo.status)}`}>
-                {ativo.recomendacao}
-                <Info size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
-              </div>
-              <div className={`absolute right-0 ${tooltipPositionClass} z-50 w-64 p-0 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-left hidden group-hover/tooltip:block pointer-events-none animate-in fade-in zoom-in-95 duration-200`}>
+
+            {/* BADGE DE RECOMENDAÇÃO (TRIGGER DO TOOLTIP) */}
+            <div
+              className={`flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border uppercase font-bold cursor-help transition-all hover:brightness-110 ${getStatusColor(ativo.status)}`}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              {ativo.recomendacao}
+              <Info size={10} className="opacity-60 hover:opacity-100 transition-opacity" />
+            </div>
+
+            {/* TOOLTIP FIXED (Fora do fluxo da tabela para não cortar) */}
+            {tooltip && (
+              <div
+                className="fixed z-[9999] w-64 p-0 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-left pointer-events-none animate-in fade-in zoom-in-95 duration-200"
+                style={{
+                  // Posiciona à esquerda do ponto X (tooltip.x - 256px de largura)
+                  left: tooltip.x - 256,
+                  // Se 'top', mostra ACIMA do elemento. Se 'bottom', mostra ABAIXO.
+                  top: tooltip.position === 'bottom' ? tooltip.y + 8 : 'auto',
+                  bottom: tooltip.position === 'top' ? (window.innerHeight - tooltip.y) + 8 : 'auto',
+                }}
+              >
                 <div className="bg-slate-800/80 px-3 py-2 border-b border-slate-700 rounded-t-lg flex justify-between items-center backdrop-blur-sm">
                   <span className="text-[10px] font-bold text-slate-200 flex items-center gap-1">📊 Análise de {ativo.ticker}</span>
                   <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${score >= 70 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>Score: {score}</span>
@@ -181,7 +227,8 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
                   </div>
                 </div>
               </div>
-            </div>
+            )}
+
           </div>
         </td>
 
@@ -214,10 +261,6 @@ export const AssetRow = ({ ativo, tab, onEdit, onViewNews, index, total }: Asset
         )}
       </tr>
 
-      {/* AQUI É O SEGREDO: 
-          Agora usamos o ReportModal que foi importado no topo, 
-          que contém a lógica de abas (Fundamentos + Docs).
-      */}
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}

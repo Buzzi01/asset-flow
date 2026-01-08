@@ -122,7 +122,7 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
                 <th className="px-4 py-3 text-right w-[150px]">Investido</th>
                 <th className="px-4 py-3 text-right w-[150px] text-white">Atual</th>
                 <th className="px-4 py-3 text-left w-[140px] text-blue-400">% vs Meta</th>
-                <th className="px-6 py-3 text-left w-24">Meta</th>
+                <th className="px-6 py-3 text-center w-24">Meta</th>
               </tr>
             </thead>
 

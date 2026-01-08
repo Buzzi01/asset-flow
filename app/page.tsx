@@ -36,18 +36,16 @@ export default function Home() {
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
-    
     { id: 'Ação', icon: <TrendingUp size={16} /> },
-    { id: 'FII', icon: <Building2 size={16} /> }, // Prédio para Imobiliário
-    { id: 'Internacional', icon: <Globe size={16} /> }, // Globo para Exterior
-    { id: 'Renda Fixa', icon: <Landmark size={16} />, label: 'Renda Fixa' }, // Banco/Instituição
-    { id: 'Reserva', icon: <Wallet size={16} />, label: 'Reserva' }, // Carteira/Caixa
-    { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Cripto' }, // Símbolo do Bitcoin
+    { id: 'FII', icon: <Building2 size={16} /> },
+    { id: 'Internacional', icon: <Globe size={16} /> },
+    { id: 'Renda Fixa', icon: <Landmark size={16} />, label: 'Renda Fixa' },
+    { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Cripto' },
+    { id: 'Reserva', icon: <Wallet size={16} />, label: 'Reserva' },
     { id: 'Evolução', icon: <LineChart size={16} /> },
-    { id: 'Correlação', icon: <Grip size={16} />, label: "Heatmap " },
-];
+    { id: 'Correlação', icon: <Grip size={16} />, label: "Heatmap" },
+  ];
 
-  // REMOVIDO 'Radar' da lista de tabs especiais
   const filteredAssets = data?.ativos?.filter((a) =>
     ['Evolução', 'Correlação'].includes(tab) ? true : a.tipo === tab
   ).sort((a, b) => a.ticker.localeCompare(b.ticker)) || [];
@@ -210,51 +208,49 @@ export default function Home() {
 
         {tab === 'Resumo' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
-            {/* KPI CARDS */}
+
+            {/* KPI CARDS (COM STATCARD COMPONENTE UNIFICADO) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard title="Yield on Cost Médio" value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'} subtext="Anual Est." icon={Percent} colorClass="text-purple-400" />
-              <StatCard title="Total Investido" value={money(data?.resumo?.TotalInvestido || 0)} subtext="Custo de Aquisição" icon={PiggyBank} colorClass="text-blue-400" />
-              <StatCard title="Lucro / Prejuízo" value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)} subtext="Variação Nominal" icon={BarChart3} colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"} />
+              <StatCard
+                title="Yield on Cost Médio"
+                value={isHidden ? '•••' : yocMedio.toFixed(2) + '%'}
+                subtext="Anual Est."
+                icon={Percent}
+                colorClass="text-purple-400"
+              />
+              <StatCard
+                title="Total Investido"
+                value={money(data?.resumo?.TotalInvestido || 0)}
+                subtext="Custo de Aquisição"
+                icon={PiggyBank}
+                colorClass="text-blue-400"
+              />
+              <StatCard
+                title="Lucro / Prejuízo"
+                value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)}
+                subtext="Variação Nominal"
+                icon={BarChart3}
+                colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}
+              />
 
-              {/* TOP PICK CARD */}
-              <div className="bg-[#0f172a] p-4 rounded-xl border border-slate-800 flex flex-col justify-between min-h-[115px] relative overflow-hidden group hover:border-slate-700 transition-all shadow-lg shadow-black/40">
-                <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <Target size={32} className="text-blue-400" />
-                </div>
-                <div className="flex justify-between items-start">
-                  <div className="flex flex-col">
-                    <span className="text-[8px] uppercase font-bold text-slate-500 tracking-widest leading-none mb-1">Top Insight</span>
-                    {topCompras.length > 0 && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <h3 className="text-xl font-bold text-white tracking-tight font-mono leading-none">{topCompras[0].ticker}</h3>
-                        <span className="text-[8px] text-green-400 font-bold flex items-center gap-0.5 uppercase bg-green-400/10 px-1.5 py-0.5 rounded border border-green-400/20">
-                          <ArrowUpRight size={10} /> {topCompras[0].recomendacao}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20"><TrendingUp size={14} className="text-blue-400" /></div>
-                </div>
-
-                <div className="mt-3 pt-2 border-t border-slate-800/50 overflow-hidden relative">
-                  {topCompras.length > 0 ? (
-                    <div className="relative flex items-center">
-                      <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-[#0f172a] to-transparent z-10" />
-                      <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tight italic whitespace-nowrap animate-marquee group-hover:pause">
-                        {topCompras[0].motivo}
-                      </p>
-                    </div>
-                  ) : <p className="text-slate-600 text-[8px] font-bold uppercase italic">Aguardando sinais...</p>}
-                </div>
-              </div>
+              {/* TOP INSIGHT (VIA STATCARD) */}
+              <StatCard
+                title="Top Insight"
+                type="insight"
+                colorClass="text-indigo-400"
+                icon={Target}
+                value={topCompras.length > 0 ? topCompras[0].ticker : "--"}
+                badge={topCompras.length > 0 ? topCompras[0].recomendacao : undefined}
+                marquee={topCompras.length > 0 ? `${topCompras[0].motivo} • Potencial Identificado •` : undefined}
+              />
             </div>
 
             {/* GRID PRINCIPAL */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div className="h-[525px]">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 h-[525px]"> {/* Altura travada aqui */}
+              <div className="h-full">
                 <RiskRadar alertas={data?.alertas || []} />
               </div>
-              <div className="lg:col-span-2 h-[525px]">
+              <div className="lg:col-span-2 h-full">
                 <CategorySummary ativos={data?.ativos || []} categorias={data?.categorias || []} onUpdate={() => refetch(true)} />
               </div>
             </div>
@@ -278,9 +274,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* REMOVIDO O BLOCO DO RADAR AVULSO AQUI */}
-
-        {/* TABELA DE ATIVOS (Filtrada) - Atualizado filtro */}
+        {/* TABELA DE ATIVOS (Filtrada) */}
         {!['Resumo', 'Evolução', 'Correlação'].includes(tab) && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
