@@ -3,14 +3,26 @@ import { useState } from 'react';
 import { formatMoney } from '../utils';
 import { Asset } from '../types';
 import { usePrivacy } from '../context/PrivacyContext';
-import { PieChart, Pencil, X, Save, Lock, AlertCircle } from 'lucide-react';
+import { PieChart, Pencil, X, Save, Lock, AlertCircle, AlertTriangle, TrendingUp, Ban, CheckCircle2 } from 'lucide-react';
 import { Card } from './ui/Card';
-import { Badge } from './ui/Badge';
+
+// URL da API
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 interface CategorySummaryProps {
   ativos: Asset[];
   categorias?: { name: string; meta: number }[];
   onUpdate: () => void;
+}
+
+interface EditingCategory {
+  name: string;
+}
+
+interface GroupedAsset {
+  tipo: string;
+  investido: number;
+  atual: number;
 }
 
 const PrivateValue = ({ value, isHidden, className = "" }: { value: string | number, isHidden: boolean, className?: string }) => (
@@ -19,9 +31,12 @@ const PrivateValue = ({ value, isHidden, className = "" }: { value: string | num
 
 export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategorySummaryProps) => {
   const { isHidden } = usePrivacy();
-  const [editingCat, setEditingCat] = useState<any | null>(null);
+  const [editingCat, setEditingCat] = useState<EditingCategory | null>(null);
   const [newMeta, setNewMeta] = useState(0);
   const [loading, setLoading] = useState(false);
+
+  // Estado para controlar o Tooltip Flutuante
+  const [hoveredInfo, setHoveredInfo] = useState<{ x: number, y: number, data: any } | null>(null);
 
   const getMaxAllowed = (catName: string) => {
     const otherCatsTotal = categorias
@@ -32,21 +47,25 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
 
   if (!ativos || ativos.length === 0) return null;
 
-  const groups = ativos.reduce((acc: any, asset) => {
-    const cat = asset.tipo;
-    if (!acc[cat]) acc[cat] = { tipo: cat, investido: 0, atual: 0 };
+  const groups = ativos.reduce((acc: Record<string, GroupedAsset>, asset) => {
+    const cat = asset.tipo || 'Outros';
+    if (!acc[cat]) {
+      acc[cat] = { tipo: cat, investido: 0, atual: 0 };
+    }
     acc[cat].investido += asset.total_investido;
     acc[cat].atual += asset.total_atual;
     return acc;
   }, {});
 
-  const lista = (Object.values(groups) as any[]).sort((a, b) => b.atual - a.atual);
+  const lista = (Object.values(groups)).sort((a, b) => b.atual - a.atual);
   const totalInvestidoGeral = lista.reduce((acc, item) => acc + item.investido, 0);
   const totalAtualGeral = lista.reduce((acc, item) => acc + item.atual, 0);
 
+  const maiorAlocacao = Math.max(...lista.map(item => (totalAtualGeral > 0 ? (item.atual / totalAtualGeral) * 100 : 0)), 1);
+
   const totalMetaConfigurada = lista.reduce((acc, item) => {
-     const catInfo = categorias.find(c => c.name === item.tipo);
-     return acc + (catInfo ? catInfo.meta : 0);
+    const catInfo = categorias.find(c => c.name === item.tipo);
+    return acc + (catInfo ? catInfo.meta : 0);
   }, 0);
 
   const handleEdit = (catName: string, currentMeta: number) => {
@@ -58,15 +77,19 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
     if (!editingCat) return;
     setLoading(true);
     try {
-      await fetch('http://localhost:5328/api/update_category_meta', {
+      const response = await fetch(`${API_URL}/api/update_category_meta`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: editingCat.name, meta: Number(newMeta) }),
       });
+
+      if (!response.ok) throw new Error('Falha ao atualizar meta');
+
       setEditingCat(null);
       onUpdate();
     } catch (error) {
       console.error(error);
+      alert("Erro ao salvar a meta.");
     } finally {
       setLoading(false);
     }
@@ -74,9 +97,8 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
 
   return (
     <>
-      {/* ALTURA TRAVADA EM 525PX AQUI */}
-      <Card className="flex flex-col h-[525px] overflow-hidden !bg-[#0f172a] !border-slate-800 shadow-2xl p-0 animate-in fade-in duration-500">
-        
+      <Card className="flex flex-col h-[525px] overflow-hidden !bg-[#0f172a] !border-slate-800 shadow-2xl p-0 animate-in fade-in duration-500 relative">
+
         <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-1.5 bg-blue-500/10 rounded-lg border border-blue-500/20">
@@ -86,25 +108,24 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
           </div>
           {totalMetaConfigurada !== 100 && (
             <div className="flex items-center gap-1.5 text-amber-500/80 animate-pulse">
-               <AlertCircle size={12} />
-               <span className="text-[9px] font-bold uppercase tracking-tight">Metas: {totalMetaConfigurada}%</span>
+              <AlertCircle size={12} />
+              <span className="text-[9px] font-bold uppercase tracking-tight">Metas: {totalMetaConfigurada}%</span>
             </div>
           )}
         </div>
-        
-        {/* flex-1 garante que a tabela ocupe o espaço disponível e gere o scroll interno */}
+
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-900/80 text-slate-500 uppercase text-[10px] font-bold tracking-wider border-b border-slate-800 sticky top-0 z-10 backdrop-blur-sm">
               <tr>
-                <th className="px-6 py-3">Classe</th>
-                <th className="px-4 py-3 text-right">Investido</th>
-                <th className="px-4 py-3 text-right text-white">Atual</th>
-                <th className="px-4 py-3 text-right text-blue-400">%</th>
-                <th className="px-6 py-3 text-right w-24">Meta</th>
+                <th className="px-6 py-3 text-left w-[150px]">Classe</th>
+                <th className="px-4 py-3 text-right w-[150px]">Investido</th>
+                <th className="px-4 py-3 text-right w-[150px] text-white">Atual</th>
+                <th className="px-4 py-3 text-left w-[140px] text-blue-400">% vs Meta</th>
+                <th className="px-6 py-3 text-left w-24">Meta</th>
               </tr>
             </thead>
-            
+
             <tbody className="divide-y divide-slate-800/30">
               {lista.map((item) => {
                 const pctAtual = totalAtualGeral > 0 ? (item.atual / totalAtualGeral) * 100 : 0;
@@ -112,31 +133,66 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
                 const meta = catInfo ? catInfo.meta : 0;
                 const diff = pctAtual - meta;
 
+                // Lógica Visual da Barra
+                let visualWidth = 0;
+                if (meta > 0) {
+                  visualWidth = Math.min((pctAtual / meta) * 100, 100);
+                } else if (pctAtual > 0) {
+                  visualWidth = 100;
+                }
+
+                let barColor = "bg-blue-600";
+                if (pctAtual > meta * 1.15) barColor = "bg-amber-500";
+                else if (pctAtual < meta * 0.85) barColor = "bg-emerald-500";
+
                 return (
                   <tr key={item.tipo} className="hover:bg-slate-800/40 transition-colors group">
-                    <td className="px-6 py-4 font-bold text-slate-300">{item.tipo}</td>
-                    <td className="px-4 text-right text-slate-500 font-mono">
+                    <td className="px-6 py-3 font-bold text-slate-300 align-middle">{item.tipo}</td>
+
+                    <td className="px-4 py-3 text-right text-slate-500 font-mono align-middle">
                       <PrivateValue value={formatMoney(item.investido)} isHidden={isHidden} />
                     </td>
-                    <td className="px-4 text-right text-white font-mono font-bold">
+
+                    <td className="px-4 py-3 text-right text-white font-mono font-bold align-middle">
                       <PrivateValue value={formatMoney(item.atual)} isHidden={isHidden} />
                     </td>
-                    <td className="px-4 text-right">
-                       <span className="font-bold text-blue-400 font-mono">{pctAtual.toFixed(1)}%</span>
+
+                    <td className="px-4 py-3 align-middle">
+                      <div
+                        className="w-full cursor-help py-1"
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHoveredInfo({
+                            x: rect.right + 10, // Posiciona à direita da barra
+                            y: rect.top,
+                            data: { item, meta, pctAtual, diff, visualWidth }
+                          });
+                        }}
+                        onMouseLeave={() => setHoveredInfo(null)}
+                      >
+                        <div className="flex justify-between text-[10px] mb-1.5 font-mono leading-none">
+                          <span className="text-slate-200 font-bold">{pctAtual.toFixed(1)}%</span>
+                          {meta > 0 && (
+                            <span className={diff > 0 ? "text-amber-500 font-bold" : "text-emerald-500 font-bold"}>
+                              {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-800/60 rounded-full overflow-hidden relative">
+                          <div
+                            className={`h-full rounded-full ${barColor} transition-all duration-500 shadow-[0_0_10px_rgba(0,0,0,0.3)]`}
+                            style={{ width: `${visualWidth}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 text-right relative">
-                      <div className="flex items-center justify-end gap-2">
-                          <div className="flex flex-col items-end">
-                              <span className="text-slate-400 font-bold font-mono text-xs">{meta.toFixed(0)}%</span>
-                              {meta > 0 && Math.abs(diff) > 0.5 && (
-                                  <span className={`text-[9px] font-bold ${diff > 2 ? 'text-rose-400' : diff < -2 ? 'text-emerald-400' : 'text-slate-600'}`}>
-                                      {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
-                                  </span>
-                              )}
-                          </div>
-                          <button onClick={() => handleEdit(item.tipo, meta)} className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-800 text-slate-600 hover:text-white transition-all">
-                            <Pencil size={12} />
-                          </button>
+
+                    <td className="px-6 py-3 text-right align-middle">
+                      <div className="flex items-center justify-end gap-2 h-full">
+                        <span className="text-slate-400 font-bold font-mono text-xs block">{meta.toFixed(0)}%</span>
+                        <button onClick={() => handleEdit(item.tipo, meta)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-slate-800 text-slate-600 hover:text-white transition-all -mr-2">
+                          <Pencil size={12} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -146,62 +202,155 @@ export const CategorySummary = ({ ativos, categorias = [], onUpdate }: CategoryS
           </table>
         </div>
 
-        <div className="p-4 bg-slate-900 border-t border-slate-800 flex justify-between items-center shrink-0">
+        {/* Footer */}
+        <div className="py-2 px-4 bg-slate-900 border-t border-slate-800 flex justify-between items-center shrink-0">
           <div className="space-y-0.5">
             <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Patrimônio Atual</p>
-            <PrivateValue 
-              value={formatMoney(totalAtualGeral)} 
-              isHidden={isHidden} 
-              className="text-lg font-bold text-emerald-400 font-mono" 
+            <PrivateValue
+              value={formatMoney(totalAtualGeral)}
+              isHidden={isHidden}
+              className="text-lg font-bold text-emerald-400 font-mono"
             />
           </div>
           <div className="text-right space-y-0.5">
             <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">Custo Total</p>
-            <PrivateValue 
-              value={formatMoney(totalInvestidoGeral)} 
-              isHidden={isHidden} 
-              className="text-sm font-bold text-slate-300 font-mono" 
+            <PrivateValue
+              value={formatMoney(totalInvestidoGeral)}
+              isHidden={isHidden}
+              className="text-sm font-bold text-slate-300 font-mono"
             />
           </div>
         </div>
       </Card>
 
+      {/* --- TOOLTIP FLUTUANTE CUSTOMIZADA --- */}
+      {hoveredInfo && (
+        <div
+          className="fixed z-[100] animate-in fade-in zoom-in-95 duration-150"
+          style={{
+            top: hoveredInfo.y - 10,
+            left: hoveredInfo.x
+          }}
+        >
+          <div className="bg-slate-900/95 backdrop-blur border border-slate-700 shadow-2xl rounded-xl p-4 w-64 ring-1 ring-black/50">
+            <div className="flex justify-between items-start mb-3">
+              <h4 className="text-sm font-bold text-white uppercase tracking-tight flex items-center gap-2">
+                <PieChart size={14} className="text-blue-400" />
+                Análise de {hoveredInfo.data.item.tipo}
+              </h4>
+              {/* Badge de Status */}
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase border ${hoveredInfo.data.meta === 0 ? 'bg-slate-800 border-slate-600 text-slate-400' :
+                  hoveredInfo.data.diff > 2 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+                    hoveredInfo.data.diff < -2 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
+                      'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                }`}>
+                {hoveredInfo.data.meta === 0 ? 'Sem Meta' : hoveredInfo.data.diff > 2 ? 'Excesso' : hoveredInfo.data.diff < -2 ? 'Aporte' : 'Neutro'}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {/* Cenário 1: Meta Zero */}
+              {hoveredInfo.data.meta === 0 ? (
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-0.5"><AlertTriangle size={14} className="text-slate-500" /></div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-300">Meta não definida</p>
+                    <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Defina uma meta para gerenciar os riscos desta classe.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Cenário 2: Excesso */}
+                  {hoveredInfo.data.diff > 2 && (
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5"><Ban size={14} className="text-amber-500" /></div>
+                      <div>
+                        <p className="text-xs font-bold text-amber-400">Acima da Meta (+{hoveredInfo.data.diff.toFixed(1)}%)</p>
+                        <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Evite novos aportes ou considere rebalancear para reduzir risco.</p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Cenário 3: Aporte */}
+                  {hoveredInfo.data.diff < -2 && (
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5"><TrendingUp size={14} className="text-emerald-500" /></div>
+                      <div>
+                        <p className="text-xs font-bold text-emerald-400">Abaixo da Meta ({hoveredInfo.data.diff.toFixed(1)}%)</p>
+                        <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Excelente oportunidade para novos aportes e equilíbrio.</p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Cenário 4: Neutro */}
+                  {Math.abs(hoveredInfo.data.diff) <= 2 && (
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5"><CheckCircle2 size={14} className="text-blue-500" /></div>
+                      <div>
+                        <p className="text-xs font-bold text-blue-400">Dentro da Meta</p>
+                        <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Alocação equilibrada conforme o planejado.</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Barra de Progresso Visual no Tooltip */}
+            {hoveredInfo.data.meta > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-800">
+                <div className="flex justify-between text-[9px] text-slate-500 font-bold uppercase mb-1">
+                  <span>Conclusão da Meta</span>
+                  <span>{hoveredInfo.data.visualWidth.toFixed(0)}%</span>
+                </div>
+                <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${hoveredInfo.data.diff > 2 ? 'bg-amber-500' : 'bg-blue-500'
+                      }`}
+                    style={{ width: `${Math.min(hoveredInfo.data.visualWidth, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL (sem alterações) */}
       {editingCat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-           <Card className="w-full max-w-sm !bg-slate-900 shadow-2xl p-6 space-y-6 border-slate-700">
-              <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-bold text-white leading-tight">Meta: {editingCat.name}</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1 mt-1">
-                       <Lock size={10} /> Disponível: {getMaxAllowed(editingCat.name)}%
-                    </p>
-                  </div>
-                  <button onClick={() => setEditingCat(null)} className="p-1.5 text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+          <Card className="w-full max-w-sm !bg-slate-900 shadow-2xl p-6 space-y-6 border-slate-700">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-white leading-tight">Meta: {editingCat.name}</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase flex items-center gap-1 mt-1">
+                  <Lock size={10} /> Disponível: {getMaxAllowed(editingCat.name)}%
+                </p>
               </div>
+              <button onClick={() => setEditingCat(null)} className="p-1.5 text-slate-500 hover:text-white transition-colors"><X size={20} /></button>
+            </div>
 
-              <div className="space-y-4">
-                  <div className="flex justify-between items-end px-1">
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Ajustar Alocação</span>
-                    <span className="text-3xl font-bold text-blue-400 font-mono">{newMeta}%</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max={getMaxAllowed(editingCat.name)} 
-                    step="1"
-                    value={newMeta}
-                    onChange={(e) => setNewMeta(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
-                  />
+            <div className="space-y-4">
+              <div className="flex justify-between items-end px-1">
+                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Ajustar Alocação</span>
+                <span className="text-3xl font-bold text-blue-400 font-mono">{newMeta}%</span>
               </div>
+              <input
+                type="range"
+                min="0"
+                max={getMaxAllowed(editingCat.name)}
+                step="1"
+                value={newMeta}
+                onChange={(e) => setNewMeta(Number(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 outline-none"
+              />
+            </div>
 
-              <div className="flex justify-end gap-3">
-                  <button onClick={() => setEditingCat(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">Cancelar</button>
-                  <button onClick={handleSave} disabled={loading} className="px-6 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 shadow-lg shadow-blue-900/20 uppercase tracking-widest">
-                    {loading ? 'Salvando...' : <><Save size={14}/> Salvar Meta</>}
-                  </button>
-              </div>
-           </Card>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setEditingCat(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">Cancelar</button>
+              <button onClick={handleSave} disabled={loading} className="px-6 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 shadow-lg shadow-blue-900/20 uppercase tracking-widest">
+                {loading ? 'Salvando...' : <><Save size={14} /> Salvar Meta</>}
+              </button>
+            </div>
+          </Card>
         </div>
       )}
     </>

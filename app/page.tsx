@@ -36,14 +36,15 @@ export default function Home() {
 
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
-    { id: 'Evolução', icon: <LineChart size={16} /> },
-    { id: 'Correlação', icon: <Grip size={16} />, label: "Matriz" },
+    
     { id: 'Ação', icon: <TrendingUp size={16} /> },
     { id: 'FII', icon: <Building2 size={16} /> }, // Prédio para Imobiliário
     { id: 'Internacional', icon: <Globe size={16} /> }, // Globo para Exterior
     { id: 'Renda Fixa', icon: <Landmark size={16} />, label: 'Renda Fixa' }, // Banco/Instituição
     { id: 'Reserva', icon: <Wallet size={16} />, label: 'Reserva' }, // Carteira/Caixa
     { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Cripto' }, // Símbolo do Bitcoin
+    { id: 'Evolução', icon: <LineChart size={16} /> },
+    { id: 'Correlação', icon: <Grip size={16} />, label: "Heatmap " },
 ];
 
   // REMOVIDO 'Radar' da lista de tabs especiais

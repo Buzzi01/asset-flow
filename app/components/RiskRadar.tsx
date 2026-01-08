@@ -78,7 +78,7 @@ export const RiskRadar = ({ alertas }: { alertas: string[] }) => {
       </div>
 
       {/* Footer Fixo - Simétrico ao CategorySummary */}
-      <div className="p-4 bg-slate-900 border-t border-slate-800 text-center shrink-0">
+      <div className="p-5 bg-slate-900 border-t border-slate-800 text-center shrink-0">
         <p className="text-[9px] text-slate-600 font-bold uppercase tracking-[0.2em]">
             Análise baseada em Preço e RSI
         </p>
