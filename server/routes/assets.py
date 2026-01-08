@@ -149,3 +149,15 @@ def correlation():
     # Usa o service global já instanciado no topo
     data = service.get_correlation_matrix()
     return jsonify(data)
+
+@assets_bp.route('/api/refresh_prices', methods=['POST'])
+def refresh_prices():
+    try:
+        print("⚡ Recebido comando de atualização manual...", flush=True)
+        # Atualiza preços e calcula a variação (change_percent)
+        service.update_prices()       
+        # Tira foto do patrimônio atualizado
+        service.take_daily_snapshot() 
+        return jsonify({"status": "Sucesso", "msg": "Preços e Variações atualizados!"})
+    except Exception as e:
+        return jsonify({"status": "Erro", "msg": str(e)}), 500

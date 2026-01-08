@@ -69,6 +69,7 @@ class MarketData(Base):
     date = Column(Date, default=datetime.now)
     price = Column(Float)
     min_6m = Column(Float)
+    change_percent = Column(Float, default=0.0)
     rsi_14 = Column(Float, nullable=True)
     sma_20 = Column(Float, nullable=True)
     

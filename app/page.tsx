@@ -57,6 +57,20 @@ export default function Home() {
     ? ((data.resumo.RendaMensal * 12) / data.resumo.TotalInvestido) * 100
     : 0;
 
+  // 👇 CÁLCULO CORRIGIDO DA VARIAÇÃO DIÁRIA TOTAL 👇
+  const variacaoDiariaTotal = data?.ativos?.reduce((acc: number, asset: any) => {
+    const variacaoPct = asset.change_percent || 0;
+    const totalAtual = asset.total_atual || 0;
+
+    // Cálculo Reverso: Se hoje = ontem * (1 + pct), então ontem = hoje / (1 + pct)
+    const divisor = 1 + (variacaoPct / 100);
+    // Proteção contra divisão por zero se algo bizarro acontecer
+    const valOntem = divisor > 0.0001 ? totalAtual / divisor : totalAtual;
+
+    // O lucro do dia é a diferença entre o valor de hoje e o valor de ontem
+    return acc + (totalAtual - valOntem);
+  }, 0) || 0;
+
   const money = (val: number) => isHidden ? '••••••' : formatMoney(val);
 
   const handleSyncReports = async () => {
@@ -91,11 +105,17 @@ export default function Home() {
   const handleManualRefresh = async () => {
     setIsRefetching(true);
     try {
+      // 1. Chama o Backend na porta 5328 (conforme sua configuração)
+      await fetch('http://localhost:5328/api/refresh_prices', { method: 'POST' });
+
+      // 2. Recarrega os dados na tela
       await refetch(true);
+
       setShowRefreshSuccess(true);
       setTimeout(() => setShowRefreshSuccess(false), 2000);
     } catch (e) {
       console.error("Erro ao atualizar:", e);
+      alert("Erro ao atualizar preços. Verifique se o backend está rodando na porta 5328.");
     } finally {
       setIsRefetching(false);
     }
@@ -209,7 +229,7 @@ export default function Home() {
         {tab === 'Resumo' && (
           <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
 
-            {/* KPI CARDS (COM STATCARD COMPONENTE UNIFICADO) */}
+            {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
                 title="Yield on Cost Médio"
@@ -228,12 +248,14 @@ export default function Home() {
               <StatCard
                 title="Lucro / Prejuízo"
                 value={isHidden ? '••••••' : (lucroTotal > 0 ? '+' : '') + formatMoney(lucroTotal)}
-                subtext="Variação Nominal"
+                subtext="Total Histórico"
                 icon={BarChart3}
                 colorClass={lucroTotal >= 0 ? "text-green-400" : "text-red-400"}
+                // 👇 AQUI ESTÁ A LIGAÇÃO COM O NOVO CÁLCULO
+                dailyResult={variacaoDiariaTotal}
               />
 
-              {/* TOP INSIGHT (VIA STATCARD) */}
+              {/* TOP INSIGHT */}
               <StatCard
                 title="Top Insight"
                 type="insight"
@@ -246,7 +268,7 @@ export default function Home() {
             </div>
 
             {/* GRID PRINCIPAL */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 h-[525px]"> {/* Altura travada aqui */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 h-[525px]">
               <div className="h-full">
                 <RiskRadar alertas={data?.alertas || []} />
               </div>
@@ -274,7 +296,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* TABELA DE ATIVOS (Filtrada) */}
+        {/* TABELA DE ATIVOS */}
         {!['Resumo', 'Evolução', 'Correlação'].includes(tab) && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl animate-in slide-in-from-bottom-4 mt-6">
             <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">

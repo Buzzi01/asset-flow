@@ -16,6 +16,7 @@ export interface Asset {
   meta: number;
   preco_atual: number;
   min_6m: number;
+  change_percent?: number;
   
   // Valores calculados
   total_atual: number;

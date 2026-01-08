@@ -105,6 +105,13 @@ class PortfolioService:
                     # Se chegou aqui, o ativo existe na bolsa e é automático
                     current_price = float(hist['Close'].iloc[-1])
                     absolute_min_6m = float(hist['Low'].min())
+
+                    change_pct = 0.0
+                    if len(hist) >= 2:
+                        prev_close = float(hist['Close'].iloc[-2]) # Penúltimo fechamento
+                        if prev_close > 0:
+                            change_pct = ((current_price - prev_close) / prev_close) * 100
+
                     mdata = session.query(MarketData).filter_by(asset_id=asset.id).first()
                     if not mdata:
                         mdata = MarketData(asset_id=asset.id)
@@ -112,6 +119,7 @@ class PortfolioService:
                     
                     mdata.price = current_price
                     mdata.min_6m = absolute_min_6m
+                    mdata.change_percent = change_pct
                     mdata.date = datetime.now()
                     count_ok += 1
 
@@ -166,11 +174,13 @@ class PortfolioService:
                     if mdata and mdata.price is not None and mdata.price > 0:
                         preco = float(mdata.price)
                         min_6m = float(mdata.min_6m or 0)
+                        change_percent = float(mdata.change_percent or 0)
                     else:
                         preco = 0.0
                         min_6m = 0.0
+                        change_percent = 0.0
                 except: 
-                    qtd=0; pm=0; preco=0; min_6m=0
+                    qtd=0; pm=0; preco=0; min_6m=0; change_percent=0
 
                 fator = dolar_rate if asset.currency == 'USD' else 1.0
                 total_atual = qtd * preco * fator
@@ -186,7 +196,7 @@ class PortfolioService:
                 
                 ativos_proc.append({
                     "obj": pos, "total_atual": total_atual, "total_investido": total_investido,
-                    "preco_atual": preco, "min_6m": min_6m, "metrics": metrics
+                    "preco_atual": preco, "min_6m": min_6m, "change_percent": change_percent, "metrics": metrics
                 })
 
             resumo["LucroTotal"] = resumo["Total"] - resumo["TotalInvestido"]
@@ -275,6 +285,7 @@ class PortfolioService:
                     "pm": pos.average_price,
                     "meta": pos.target_percent,
                     "preco_atual": item["preco_atual"],
+                    "change_percent": item["change_percent"],
                     "min_6m": item["min_6m"],
                     "total_atual": item["total_atual"],          
                     "total_investido": item["total_investido"],  
