@@ -354,33 +354,83 @@ class PortfolioService:
     def _apply_strategy(self, pos, metrics, falta, preco, min_6m):
         score = 0
         motivos = []
+        cat_name = pos.asset.category.name
 
+        # ======================================================
+        # 1. LÓGICA ESPECÍFICA: RESERVA & RENDA FIXA
+        # ======================================================
+        if cat_name == "Reserva":
+            if falta > 0:
+                return "🚨 REPOR RESERVA", "COMPRA_FORTE", 100, "⚠️ Nível abaixo do ideal", 50
+            else:
+                return "✅ RESERVA OK", "NEUTRO", 50, "🛡️ Reserva completa", 50
+
+        if cat_name == "Renda Fixa":
+            # Renda fixa é puramente alocação (Score Capado em 85 para não distorcer o global)
+            if falta > 0:
+                score = 85 
+                motivos.append("💰 Aporte Mensal / Rebalanceamento")
+                status = "COMPRAR"
+                rec_text = "🟢 APORTAR"
+            else:
+                score = 40
+                motivos.append("⚖️ Alocação Atingida")
+                status = "AGUARDAR"
+                rec_text = "🟡 MANTER"
+            
+            return rec_text, status, score, " • ".join(motivos), 50
+
+        # ======================================================
+        # 2. LÓGICA GERAL: RENDA VARIÁVEL
+        # ======================================================
+        
+        # --- Critério 1: Alocação (Peso Aumentado para 30) ---
+        # Aumentei o peso do rebalanceamento para competir melhor com valuation
         if falta > 0: 
-            score += 20
-            motivos.append("⚖️ Abaixo da Meta (Rebalancear)")
+            score += 30 
+            motivos.append("⚖️ Abaixo da Meta (+30)")
         else: 
             score -= 10
-            motivos.append("📊 Acima da Meta (Evitar Aporte)")
+            motivos.append("📊 Acima da Meta (-10)")
 
+        # --- Critério 2: RSI (Momento) ---
         rsi = 50
         mdata = pos.asset.market_data[0] if pos.asset.market_data else None
         if mdata:
             rsi = mdata.rsi_14 or 50
         
-        if rsi < 30:
-            score += 30
-            motivos.append(f"🔥 Sobrevenda Crítica (RSI {rsi:.0f})")
-        elif rsi < 40:
-            score += 15
-            motivos.append(f"↘️ Desconto Técnico (RSI {rsi:.0f})")
-        elif rsi <= 70:
-            score += 0
-            motivos.append(f"⚖️ RSI Neutro ({rsi:.0f})")
-        elif rsi > 70:
-            score -= 35
-            motivos.append(f"⚠️ Esticado (RSI {rsi:.0f})")
+        if cat_name == "Cripto":
+            motivos.append("⚡ Ativo de Volatilidade Alta") # Tag de consciência
+            if rsi < 35:
+                score += 25
+                motivos.append(f"🔥 Sobrevenda Cripto (RSI {rsi:.0f})")
+            elif rsi > 75:
+                score -= 30
+                motivos.append(f"⚠️ Cripto Esticada (RSI {rsi:.0f})")
+        else:
+            if rsi < 30:
+                score += 25
+                motivos.append(f"🔥 Sobrevenda Crítica (RSI {rsi:.0f})")
+            elif rsi < 40:
+                score += 15
+                motivos.append(f"↘️ Desconto Técnico (RSI {rsi:.0f})")
+            elif rsi > 70:
+                score -= 30
+                motivos.append(f"⚠️ Esticado (RSI {rsi:.0f})")
 
-        if pos.asset.category.name == "Ação":
+        # --- Critério 3: Price Action (Mínimas) ---
+        if min_6m > 0:
+            if preco <= min_6m * 1.02: 
+                score += 15
+                motivos.append("⚓ Suporte: Mínima Semestral")
+            elif preco <= min_6m * 1.05:
+                score += 5
+                motivos.append("📉 Próximo das Mínimas")
+
+        # --- Critério 4: Análise Fundamentalista ---
+        
+        # >>> AÇÕES (Graham) <<<
+        if cat_name == "Ação":
             mg = metrics.get("mg_graham", 0)
             if mg > 50:
                 score += 30
@@ -390,57 +440,65 @@ class PortfolioService:
                 motivos.append(f"💰 Graham: Desconto (+{mg:.0f}%)")
             elif mg < -20:
                 score -= 20
-                motivos.append(f"💸 Acima do Valor Justo")
-            else:
-                motivos.append("⚖️ Graham: Próximo ao Valor Justo")
+                motivos.append(f"💸 Preço acima do Justo")
 
-                
-        elif pos.asset.category.name == "FII":
+        # >>> INTERNACIONAL (ETFs/Stocks) - Lógica Adaptada <<<
+        elif cat_name == "Internacional":
+            # ETFs geralmente não têm Graham confiável via API comum.
+            # Focamos em DY ou Price Action, ou usamos um peso neutro se não tiver dados.
+            # Se for Stock individual com Graham, usa. Se for ETF, ignora Graham para não punir.
+            mg = metrics.get("mg_graham", 0)
+            if mg != 0: # Só aplica se tiver dados reais
+                if mg > 20: score += 15; motivos.append("💰 Valuation Atrativo")
+                elif mg < -20: score -= 15; motivos.append("💸 Valuation Esticado")
+            else:
+                # Se não tem Graham (comum em ETFs), damos um bônus neutro para não ficar atrás de Ações
+                score += 10 
+                motivos.append("🌎 Alocação Global")
+
+        # >>> FIIs (P/VP) <<<
+        elif cat_name == "FII":
             pvp = metrics.get("p_vp", 1)
-            if pvp <=0.50:
-                score -= 50
-                motivos.append(f"🏚️ P/VP: Sinal de Alerta ({pvp:.2f})")
-            elif  pvp <= 0.90:
+            
+            if pvp < 0.60:
+                score -= 20 
+                motivos.append(f"🚨 P/VP de Risco? ({pvp:.2f})")
+            elif pvp <= 0.90:
                 score += 30
-                motivos.append(f"🏢 P/VP: Grande Desconto ({pvp:.2f})")
-            elif pvp < 1.00:
-                score += 15
-                motivos.append(f"🏬 P/VP: Abaixo do Patrimonial ({pvp:.2f})")
-            elif pvp < 1.15:
-                score += 0
-                motivos.append(f"🏬 P/VP: Próximo ao Justo ({pvp:.2f})")
+                motivos.append(f"🏢 P/VP: Desconto ({pvp:.2f})")
+            elif pvp < 1.02:
+                score += 10
+                motivos.append(f"✅ P/VP Justo ({pvp:.2f})")
             elif pvp > 1.15:
                 score -= 30
-                motivos.append(f"⚠️ P/VP: Ágio Elevado ({pvp:.2f})")
+                motivos.append(f"⚠️ P/VP Caro ({pvp:.2f})")
 
             mn = metrics.get("magic_number", 0)
             if mn > 0 and pos.quantity >= mn:
                 score += 5
-                motivos.append("❄️ Efeito Bola de Neve Ativo")
+                motivos.append("❄️ Magic Number Atingido")
 
-        if min_6m > 0:
-            if preco <= min_6m * 1.015:
-                score += 20
-                motivos.append("⚓ Suporte: Na Mínima de 6 Meses")
-            elif preco <= min_6m * 1.05:
-                score += 10
-                motivos.append("📉 Perto das Mínimas")
+        # ======================================================
+        # 3. NORMALIZAÇÃO FINAL (Clamp 0-100)
+        # ======================================================
+        score = max(0, min(score, 100)) # Garante que nunca passe de 100 nem seja negativo
 
-        if score >= 85:
-                status = "COMPRA_FORTE"
-                rec_text = "💎 OPORTUNIDADE"
-        elif score >= 65:
-                status = "COMPRAR"
-                rec_text = "🟢 COMPRAR"
+        # Definição de Status baseada no Score Final Normalizado
+        if score >= 80:
+            status = "COMPRA_FORTE"
+            rec_text = "💎 OPORTUNIDADE"
+        elif score >= 60:
+            status = "COMPRAR"
+            rec_text = "🟢 COMPRAR"
         elif score >= 40:
-                status = "AGUARDAR"
-                rec_text = "🟡 OBSERVAR"
+            status = "AGUARDAR"
+            rec_text = "🟡 OBSERVAR"
         elif score >= 20:
-                status = "NEUTRO"
-                rec_text = "⚪ NEUTRO"
+            status = "NEUTRO"
+            rec_text = "⚪ NEUTRO"
         else:
-                status = "EVITAR"
-                rec_text = "🔴 EVITAR"
+            status = "EVITAR"
+            rec_text = "🔴 EVITAR"
             
         return rec_text, status, score, " • ".join(motivos), rsi
 
