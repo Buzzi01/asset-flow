@@ -3,7 +3,7 @@ import { useState } from 'react';
 import {
   TrendingUp, Wallet, DollarSign, Activity,
   Target, Layers, RefreshCw, PiggyBank, BarChart3, LineChart, ArrowUpRight, PlusCircle,
-  Brain, Calendar, Eye, EyeOff, Percent, Grip, Building2, Globe, Landmark, Bitcoin
+  Brain, Calendar, Eye, EyeOff, Percent, Grip, Building2, Globe, Landmark, Bitcoin, Calculator // 👈 Adicionado Calculator
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePrivacy } from './context/PrivacyContext';
@@ -20,6 +20,7 @@ import { useAssetData } from './hooks/useAssetData';
 import MonteCarloChart from './components/MonteCarloChart';
 import CorrelationMatrix from './components/CorrelationMatrix';
 import { AlertsButton } from './components/AlertsButton';
+import { SmartAllocationModal } from './components/SmartAllocationModal'; // 👈 Adicionado Import
 
 export default function Home() {
   const { data, history, loading, refreshing, error, refetch } = useAssetData();
@@ -34,13 +35,16 @@ export default function Home() {
   const [showRefreshSuccess, setShowRefreshSuccess] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
 
+  // 🆕 Novo State para o Modal de Aporte Inteligente
+  const [isSmartModalOpen, setIsSmartModalOpen] = useState(false);
+
   const categories = [
     { id: 'Resumo', icon: <Layers size={16} /> },
     { id: 'Ação', icon: <TrendingUp size={16} /> },
     { id: 'FII', icon: <Building2 size={16} /> },
     { id: 'Internacional', icon: <Globe size={16} /> },
+    { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Criptomoeda' },
     { id: 'Renda Fixa', icon: <Landmark size={16} />, label: 'Renda Fixa' },
-    { id: 'Cripto', icon: <Bitcoin size={16} />, label: 'Cripto' },
     { id: 'Reserva', icon: <Wallet size={16} />, label: 'Reserva' },
     { id: 'Evolução', icon: <LineChart size={16} /> },
     { id: 'Correlação', icon: <Grip size={16} />, label: "Heatmap" },
@@ -150,6 +154,16 @@ export default function Home() {
                 <Calendar size={16} className="text-blue-400" />
                 <span className="hidden sm:inline">Proventos</span>
               </Link>
+
+              {/* 🆕 BOTÃO SIMULADOR DE APORTE */}
+              <button
+                onClick={() => setIsSmartModalOpen(true)}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-purple-900/20 border border-purple-500/50"
+              >
+                <Calculator size={16} />
+                <span className="hidden sm:inline">Simular Aporte</span>
+              </button>
+
               <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-lg shadow-blue-900/20">
                 <PlusCircle size={16} /> <span className="hidden sm:inline">Novo Ativo</span>
               </button>
@@ -325,6 +339,13 @@ export default function Home() {
         <EditModal isOpen={!!editingAsset} onClose={() => setEditingAsset(null)} onSave={() => refetch(true)} ativo={editingAsset} allAssets={data?.ativos || []} />
         <AddAssetModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSuccess={() => refetch(true)} />
         <AssetNewsPanel ticker={newsTicker} onClose={() => setNewsTicker(null)} />
+
+        {/* 🆕 MODAL DE SIMULAÇÃO DE APORTE */}
+        <SmartAllocationModal
+          isOpen={isSmartModalOpen}
+          onClose={() => setIsSmartModalOpen(false)}
+          ativos={data?.ativos || []}
+        />
 
         <div className="text-center text-[10px] text-slate-600 mt-12 mb-4">AssetFlow v7.5 (Matrix Edition)</div>
       </div>
