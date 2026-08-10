@@ -1,6 +1,6 @@
 'use client';
 import dynamic from 'next/dynamic';
-import { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { usePrivacy } from './context/PrivacyContext';
 import { useToast } from './context/ToastContext';
 import { formatMoney } from './lib/format';
@@ -93,6 +93,10 @@ export default function Home() {
     handlers.handleFixAsset(assetId, data?.ativos || []);
   }, [handlers, data?.ativos]);
 
+  const handleEditAsset = useCallback((a: any) => modals.setEditingAsset(a), [modals]);
+  const handleViewNews = useCallback((ticker: string) => modals.setNewsTicker(ticker), [modals]);
+  const handleViewDetails = useCallback((a: any) => modals.setSelectedDetailsAsset(a), [modals]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[#0b0f19] text-slate-200 font-sans selection:bg-blue-500/30 pb-20 relative">
@@ -166,9 +170,9 @@ export default function Home() {
         <AssetsTable
           assets={data?.ativos || []}
           tab={tab}
-          onEdit={(a) => modals.setEditingAsset(a)}
-          onViewNews={(ticker) => modals.setNewsTicker(ticker)}
-          onViewDetails={(a) => modals.setSelectedDetailsAsset(a)}
+          onEdit={handleEditAsset}
+          onViewNews={handleViewNews}
+          onViewDetails={handleViewDetails}
         />
 
         <ErrorBoundary>

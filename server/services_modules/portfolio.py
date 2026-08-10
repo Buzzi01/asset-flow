@@ -334,10 +334,13 @@ class PortfolioCrudService:
                 raise
                 
     def get_all_transactions_history(self):
-        from db.models import AssetTransaction
+        from db.models import AssetTransaction, Position, Asset
+        from sqlalchemy.orm import joinedload
         user_id = self.current_user_id
         with Session() as session:
-            txs = session.query(AssetTransaction).filter_by(user_id=user_id).order_by(AssetTransaction.transaction_date.desc()).all()
+            txs = session.query(AssetTransaction).options(
+                joinedload(AssetTransaction.position).joinedload(Position.asset)
+            ).filter_by(user_id=user_id).order_by(AssetTransaction.transaction_date.desc()).all()
             return [
                     {
                         "id": t.id,

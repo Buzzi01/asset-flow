@@ -61,6 +61,7 @@ class Position(Base):
 
     __table_args__ = (
         UniqueConstraint('asset_id', 'user_id', name='_asset_user_uc'),
+        Index('idx_positions_user_asset', 'user_id', 'asset_id'),
     )
 
 class AssetTransaction(Base):
@@ -85,6 +86,11 @@ class AssetTransaction(Base):
     position = relationship("Position", back_populates="transactions")
     user = relationship("User")
     corporate_event = relationship("CorporateEvent", back_populates="transactions")
+
+    __table_args__ = (
+        Index('idx_txs_user_pos', 'user_id', 'position_id'),
+        Index('idx_txs_user_date_desc', 'user_id', text('transaction_date DESC')),
+    )
 
 class CorporateEvent(Base):
     __tablename__ = 'corporate_events'

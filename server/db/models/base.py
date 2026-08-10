@@ -29,9 +29,11 @@ def get_active_positions(session, user_id):
         return q
         
     return q.options(
-        selectinload(Position.asset).selectinload(Asset.category),
-        selectinload(Position.asset).selectinload(Asset.market_data),
-        selectinload(Position.asset).selectinload(Asset.dividends)
+        selectinload(Position.asset).options(
+            selectinload(Asset.category),
+            selectinload(Asset.market_data),
+            selectinload(Asset.dividends)
+        )
     )
 
 # PRAGMAS DE PRODUÇÃO: Otimizações críticas de concorrência e performance para SQLite

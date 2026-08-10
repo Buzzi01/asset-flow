@@ -11,6 +11,7 @@ import { CreditCardInstallmentItem, CreditCardsDashboardData } from '../types';
 import { apiCall } from '../lib/api';
 import { StatementImportModal } from './StatementImportModal';
 import { ErrorBoundary } from './ui/ErrorBoundary';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { useChartPalette } from '../lib/chartPalette';
 import { CreditCardKpiCards } from './credit-cards/CreditCardKpiCards';
 import { CreditCardSidebar } from './credit-cards/CreditCardSidebar';
@@ -93,6 +94,7 @@ export function CreditCardsTab() {
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [deleteCardId, setDeleteCardId] = useState<number | null>(null);
 
   // Forms
   const [cardForm, setCardForm] = useState({ name: '', limit: '', closing_day: '5', due_day: '15' });
@@ -205,7 +207,6 @@ export function CreditCardsTab() {
   };
 
   const handleDeleteCard = async (cardId: number) => {
-    if (!confirm('Deseja excluir este cartão e todas as despesas associadas?')) return;
     try {
       await apiCall(`/api/credit-cards/${cardId}`, {
         method: 'DELETE'
@@ -214,6 +215,8 @@ export function CreditCardsTab() {
       loadAllData();
     } catch (e) {
       console.error(e);
+    } finally {
+      setDeleteCardId(null);
     }
   };
 
@@ -282,7 +285,7 @@ export function CreditCardsTab() {
             cards={cards}
             selectedCard={selectedCard}
             onSelectCard={setSelectedCard}
-            onDeleteCard={handleDeleteCard}
+            onDeleteCard={(id) => setDeleteCardId(id)}
             onOpenAddCard={() => setShowAddCard(true)}
             onOpenImport={() => setShowImportModal(true)}
           />
@@ -298,19 +301,20 @@ export function CreditCardsTab() {
                 cardInvoices.map((f) => {
                   const isSelected = selectedInvoiceMonth === f.invoice_month;
                   return (
-                    <div 
+                    <button 
                       key={f.invoice_month} 
+                      type="button"
                       onClick={() => {
                         setSelectedInvoiceMonth(f.invoice_month);
                         loadExpensesByMonth(selectedCard.id, f.invoice_month);
                       }}
-                      className={`p-2.5 rounded border flex justify-between items-center cursor-pointer transition ${
+                      className={`w-full p-2.5 rounded border flex justify-between items-center cursor-pointer transition ${
                         isSelected 
                           ? 'bg-blue-600/15 border-blue-500 shadow-sm shadow-blue-500/10' 
                           : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div>
+                      <div className="text-left">
                         <p className={`text-xs font-bold ${isSelected ? 'text-blue-300' : 'text-slate-200'}`}>
                           {formatInvoiceMonthLabel(f.invoice_month)}
                         </p>
@@ -324,7 +328,7 @@ export function CreditCardsTab() {
                       }`}>
                         {f.status === 'PAID' ? 'Paga' : f.status === 'PARTIAL' ? 'Parcial' : f.total === 0 ? 'Zerada' : 'Aberta'}
                       </span>
-                    </div>
+                    </button>
                   );
                 })
               ) : (
@@ -451,8 +455,9 @@ export function CreditCardsTab() {
                         {/* Parcelas */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-800/60">
                           {e.installments && e.installments.map((inst) => (
-                            <div 
+                            <button 
                               key={inst.id}
+                              type="button"
                               onClick={() => handleToggleInstallmentStatus(inst.id, inst.status)}
                               className={`p-2 rounded border text-left cursor-pointer transition flex items-center justify-between ${
                                 inst.status === 'PAID'
@@ -472,7 +477,7 @@ export function CreditCardsTab() {
                               ) : (
                                 <Clock size={14} className="text-amber-400" />
                               )}
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -657,6 +662,15 @@ export function CreditCardsTab() {
           }}
         />
       </ErrorBoundary>
+
+      <ConfirmDialog
+        isOpen={deleteCardId !== null}
+        title="Excluir Cartão"
+        message="Deseja excluir este cartão e todas as despesas associadas permanentemente?"
+        confirmLabel="Excluir"
+        onConfirm={() => deleteCardId !== null && handleDeleteCard(deleteCardId)}
+        onCancel={() => setDeleteCardId(null)}
+      />
     </div>
   );
 }

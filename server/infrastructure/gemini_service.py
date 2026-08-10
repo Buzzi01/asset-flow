@@ -24,8 +24,8 @@ def get_genai_client():
     if not api_key:
         is_testing = os.getenv("FLASK_ENV") == "testing" or "pytest" in sys.modules
         if is_testing:
-            logging.warning("⚠️ GEMINI_API_KEY não encontrada no ambiente de teste! Utilizando chave dummy.")
-            api_key = "dummy_key_for_testing"
+            logging.warning("⚠️ GEMINI_API_KEY não encontrada no ambiente de teste! Retornando None.")
+            return None
         else:
             raise ValueError("GEMINI_API_KEY não configurada no ambiente! Adicione a chave no arquivo .env.")
     return genai.Client(api_key=api_key)

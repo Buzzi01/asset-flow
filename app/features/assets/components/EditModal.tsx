@@ -5,6 +5,7 @@ import { Asset, AssetTransaction } from '@/types';
 import { apiCall } from '@/lib/api';
 import { ModalShell } from '@/components/ModalShell';
 import { formatMoney } from '@/lib/format';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface EditModalProps {
   isOpen: boolean;
@@ -348,8 +349,11 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
         {activeTab === 'HISTORY' && (
           <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
             {loadingHistory ? (
-              <div className="flex items-center justify-center text-slate-500 gap-2 py-10">
-                <Activity className="animate-spin" /> Carregando...
+              <div className="space-y-2 p-4">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
               </div>
             ) : transactions.length > 0 ? (
               <div className="border border-slate-800/80 rounded-lg overflow-hidden shadow-sm">
