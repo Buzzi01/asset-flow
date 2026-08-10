@@ -7,6 +7,7 @@ import { formatMoney } from '../../lib/format';
 interface ChartDataItem {
   name: string;
   value: number;
+  [key: string]: any;
 }
 
 interface CreditCardCategoryChartProps {
