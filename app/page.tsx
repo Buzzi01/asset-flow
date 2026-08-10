@@ -8,6 +8,7 @@ import { Header } from './features/header/components/Header';
 import { AssetsTable } from './components/AssetsTable';
 import { SkeletonLoading } from './components/ui/Skeletons';
 import { ModalSkeleton } from './components/ui/Skeletons';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { useAssetData } from './features/assets/hooks/useAssetData';
 import { usePortfolioHandlers } from './features/assets/hooks/usePortfolioHandlers';
 import { usePortfolioMetrics } from './features/assets/hooks/usePortfolioMetrics';
@@ -147,16 +148,18 @@ export default function Home() {
       <div id="main-content" tabIndex={-1} className="max-w-7xl mx-auto p-4 md:p-6 outline-none">
         
         {['Resumo', 'Evolução', 'Financeiro', 'Quantitativo', 'Jarvis', 'Cartoes', 'Renda Fixa'].includes(tab) && (
-          <DashboardTabContent
-            tab={tab}
-            metrics={metrics}
-            isHidden={isHidden}
-            ativos={data?.ativos || []}
-            categorias={data?.categorias || []}
-            history={history}
-            onOpenRadar={openRadarModal}
-            onUpdate={refetch}
-          />
+          <ErrorBoundary>
+            <DashboardTabContent
+              tab={tab}
+              metrics={metrics}
+              isHidden={isHidden}
+              ativos={data?.ativos || []}
+              categorias={data?.categorias || []}
+              history={history}
+              onOpenRadar={openRadarModal}
+              onUpdate={refetch}
+            />
+          </ErrorBoundary>
         )}
 
         {/* The AssetsTable component internally checks if it should render based on the tab */}
@@ -168,22 +171,24 @@ export default function Home() {
           onViewDetails={(a) => modals.setSelectedDetailsAsset(a)}
         />
 
-        <PortfolioModals
-          ativos={data?.ativos || []}
-          editingAsset={modals.editingAsset}
-          selectedDetailsAsset={modals.selectedDetailsAsset}
-          newsTicker={modals.newsTicker}
-          isAddModalOpen={modals.isAddModalOpen}
-          isSmartModalOpen={modals.isSmartModalOpen}
-          isCorporateActionModalOpen={modals.isCorporateActionModalOpen}
-          onCloseEditing={() => modals.setEditingAsset(null)}
-          onCloseDetails={() => modals.setSelectedDetailsAsset(null)}
-          onCloseNews={() => modals.setNewsTicker(null)}
-          onCloseAdd={() => modals.setAddModalOpen(false)}
-          onCloseSmart={() => modals.setSmartModalOpen(false)}
-          onCloseCorporateAction={() => modals.setCorporateActionModalOpen(false)}
-          onRefetch={refetch}
-        />
+        <ErrorBoundary>
+          <PortfolioModals
+            ativos={data?.ativos || []}
+            editingAsset={modals.editingAsset}
+            selectedDetailsAsset={modals.selectedDetailsAsset}
+            newsTicker={modals.newsTicker}
+            isAddModalOpen={modals.isAddModalOpen}
+            isSmartModalOpen={modals.isSmartModalOpen}
+            isCorporateActionModalOpen={modals.isCorporateActionModalOpen}
+            onCloseEditing={() => modals.setEditingAsset(null)}
+            onCloseDetails={() => modals.setSelectedDetailsAsset(null)}
+            onCloseNews={() => modals.setNewsTicker(null)}
+            onCloseAdd={() => modals.setAddModalOpen(false)}
+            onCloseSmart={() => modals.setSmartModalOpen(false)}
+            onCloseCorporateAction={() => modals.setCorporateActionModalOpen(false)}
+            onRefetch={refetch}
+          />
+        </ErrorBoundary>
 
         <SyncStatusIndicators syncStatus={syncStatus} fundamentalsStatus={fundamentalsStatus} />
 
@@ -192,7 +197,9 @@ export default function Home() {
 
 
       {isRadarModalOpen && (
-        <RiskRadarModal isOpen={true} onClose={closeRadarModal} alertas={data?.alertas || []} />
+        <ErrorBoundary>
+          <RiskRadarModal isOpen={true} onClose={closeRadarModal} alertas={data?.alertas || []} />
+        </ErrorBoundary>
       )}
     </main>
   );

@@ -46,7 +46,7 @@ def get_rebalance_bands():
                     selectinload(Position.asset)
                     .selectinload(Asset.market_data),
                 )
-                .filter_by(user_id=g.user_id, quantity=Position.quantity > 0)
+                .filter(Position.user_id == g.user_id, Position.quantity > 0)
                 .all()
             )
             if not positions:
@@ -517,7 +517,7 @@ def analyze_pdf_endpoint():
                 if "indexer_ipca_pct" in kpis and kpis["indexer_ipca_pct"] is not None:
                     position.asset.indexer_ipca_pct = float(kpis["indexer_ipca_pct"])
                     
-                position.asset.ai_updated_at = datetime.utcnow()
+                position.asset.ai_updated_at = datetime.now()
                 session.commit()
                 
             return jsonify(res)

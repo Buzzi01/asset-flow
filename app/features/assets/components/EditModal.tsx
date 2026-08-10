@@ -117,6 +117,17 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
     }
   }, [isOpen, ativo, activeTab]);
 
+  const handleDeleteTransaction = async (txId: number) => {
+    if (!confirm('Deseja realmente apagar esta transação do histórico?')) return;
+    try {
+      await apiCall(`/api/asset-transactions/${txId}`, { method: 'DELETE' });
+      setTransactions(prev => prev.filter(t => t.id !== txId));
+      onSave();
+    } catch (err) {
+      console.error('Erro ao excluir transação:', err);
+    }
+  };
+
   // -- Settings Handlers --
   const handleAdjustValue = (field: keyof typeof settingsData, delta: number, precision = 2) => {
     setSettingsData(prev => {
@@ -349,6 +360,7 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
                       <th className="px-3 py-2">Tipo</th>
                       <th className="px-3 py-2 text-right">Qtd</th>
                       <th className="px-3 py-2 text-right">Preço</th>
+                      <th className="px-3 py-2 text-center w-10">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
@@ -374,6 +386,16 @@ export const EditModal = ({ isOpen, onClose, onSave, ativo, allAssets = [] }: Ed
                         </td>
                         <td className="px-3 py-2 text-right text-slate-300 font-mono">
                           {formatMoney(tx.unit_price)}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTransaction(tx.id)}
+                            title="Apagar esta transação"
+                            className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </td>
                       </tr>
                     ))}
