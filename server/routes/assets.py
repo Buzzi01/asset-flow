@@ -158,9 +158,6 @@ def validate_ticker():
     result = service.validate_ticker_on_yahoo(ticker)
     
     if not result['valid']:
-        return jsonify({
-            "valid": True, 
-            "ticker": ticker.upper(), 
             "manual": True, 
             "msg": "Ativo não encontrado no Yahoo. Será cadastrado como Manual."
         })

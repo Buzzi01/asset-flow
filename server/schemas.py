@@ -17,11 +17,7 @@ class CreditCardCreate(BaseModel):
     closing_day: int = Field(..., ge=1, le=31)
     due_day: int = Field(..., ge=1, le=31)
 
-class CardExpenseCreate(BaseModel):
-    description: str = Field(..., min_length=1, max_length=200)
-    total_value: float = Field(..., gt=0)
-    installments_count: Optional[int] = Field(1, ge=1, le=120)
-    date: Optional[str] = Field(None, description="ISO date string")
+
 
 class RefundConfigUpdate(BaseModel):
     fechamento_dia: int = Field(..., ge=1, le=31)
