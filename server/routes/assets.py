@@ -158,10 +158,13 @@ def validate_ticker():
     result = service.validate_ticker_on_yahoo(ticker)
     
     if not result['valid']:
+        return jsonify({
+            "valid": False, 
+            "ticker": ticker.upper(), 
             "manual": True, 
             "msg": "Ativo não encontrado no Yahoo. Será cadastrado como Manual."
-        })
-    return jsonify(result)
+        }), 200
+    return jsonify(result), 200
 
 @assets_bp.route('/api/delete_asset', methods=['POST'])
 def delete_asset():
